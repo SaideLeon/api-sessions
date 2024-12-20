@@ -2,8 +2,8 @@
 
 import { Router } from 'express';
 import UserController from '../controllers/userController.mjs';
-import { authenticate } from '../middlewares/auth.js';
-import { authLimiter } from '../middlewares/rateLimit.js';
+import { authenticate } from '../middlewares/auth.mjs';
+import { authLimiter } from '../middlewares/rateLimit.mjs';
 
 const router = Router();
 const userController = new UserController();

@@ -42,8 +42,10 @@ class App {
   }
 
   middlewares() {
+    // Configuração para proxies (necessária para express-rate-limit)
+    this.app.set('trust proxy', 1);
+
     // Segurança
-    this.app.set('trust proxy', true);
     this.app.use(helmet()); // Segurança com headers HTTP
     this.app.use(cors({
       origin: process.env.CORS_ORIGIN || '*',
@@ -99,6 +101,7 @@ class App {
   }
 
   errorHandling() {
+    // Middleware global de tratamento de erros
     this.app.use(errorHandler);
   }
 

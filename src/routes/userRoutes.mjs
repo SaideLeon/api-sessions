@@ -2,7 +2,6 @@
 
 import { Router } from 'express';
 import UserController from '../controllers/userController.mjs';
-import { validate, schemas } from '../middlewares/validate.js';
 import { authenticate } from '../middlewares/auth.js';
 import { authLimiter } from '../middlewares/rateLimit.js';
 
@@ -14,7 +13,6 @@ router
   .route('/')
   .post(
     authLimiter, // Limita tentativas de requisições (proteção contra brute force)
-    validate(schemas.user.create), // Valida o corpo da requisição
     userController.create // Chama o método de criação no controlador
   )
   .get(
@@ -31,7 +29,6 @@ router
   )
   .put(
     authenticate, // Requer autenticação
-    validate(schemas.user.update), // Valida o corpo da requisição para atualização
     userController.update // Chama o método de atualização no controlador
   )
   .delete(

@@ -1,98 +1,100 @@
-// src/controllers/userController.js
-import { UserService } from './src/services/userService.j';
-
+import { PrismaClient } from '@prisma/client';
+import { hash } from 'bcrypt';
 import { AppError } from '../utils/AppError.js';
 
 export class UserController {
   constructor() {
-  this.userService = new UserService();
-}
+    this.prisma = new PrismaClient();
+  }
 
-  /**
-   * Cria um novo usuário.
-   */async create(req, res, next) {
-        try {
-          console.log('UserService instance:', this.userService); // Verifique se é undefined
-          console.log('Creating user with data:', req.body);
-          const user = await this.userService.create(req.body);
-          return res.status(201).json({
-            status: 'success',
-            message: 'User created successfully',
-            data: user,
-          });
-        } catch (err) {
-          console.error('Error in UserController.create:', err.message);
-          next(err);
-        }
-}
-
-  
-
-  /**
-   * Busca todos os usuários.
-   */
-  async find(req, res, next) {
+  async create(req, res, next) {
     try {
-      console.log('Fetching all users...');
-      const users = await this.userService.findAll();
-      return res.status(200).json({
-        status: 'success',
-        data: users
+      const { username, email, password, phoneNumber } = req.body;
+
+      // Verificar se o usuário já existe
+      const userExists = await this.prisma.user.findFirst({
+        where: { OR: [{ email }, { username }, { phoneNumber }] }
       });
+
+      if (userExists) {
+        throw new AppError('User already exists', 400);
+      }
+
+      // Hash da senha
+      const hashedPassword = await hash(password, 10);
+
+      // Criar usuário
+      const user = await this.prisma.user.create({
+        data: { username, email, password: hashedPassword, phoneNumber },
+        select: { id: true, username: true, email: true, phoneNumber: true, createdAt: true }
+      });
+
+      return res.status(201).json({ status: 'success', message: 'User created successfully', data: user });
     } catch (err) {
-      console.error('Error in UserController.find:', err.message);
       next(err);
     }
   }
 
-  /**
-   * Busca um usuário por ID.
-   */
+  async find(req, res, next) {
+    try {
+      const users = await this.prisma.user.findMany({
+        select: { id: true, username: true, email: true, phoneNumber: true, createdAt: true }
+      });
+      return res.status(200).json({ status: 'success', data: users });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async findOne(req, res, next) {
     try {
       const { id } = req.params;
-      console.log(`Fetching user with ID: ${id}`);
-      const user = await this.userService.findById(id);
-      return res.status(200).json({
-        status: 'success',
-        data: user
+      const user = await this.prisma.user.findUnique({
+        where: { id: Number(id) },
+        select: { id: true, username: true, email: true, phoneNumber: true, createdAt: true }
       });
+
+      if (!user) {
+        throw new AppError('User not found', 404);
+      }
+
+      return res.status(200).json({ status: 'success', data: user });
     } catch (err) {
-      console.error('Error in UserController.findOne:', err.message);
       next(err);
     }
   }
 
-  /**
-   * Atualiza um usuário.
-   */
   async update(req, res, next) {
     try {
       const { id } = req.params;
-      console.log(`Updating user with ID: ${id}`, req.body);
-      const updatedUser = await this.userService.update(id, req.body);
-      return res.status(200).json({
-        status: 'success',
-        message: 'User updated successfully',
-        data: updatedUser
+      const userData = req.body;
+
+      // Garante que o usuário existe
+      await this.prisma.user.findUnique({ where: { id: Number(id) } });
+
+      const updatedUser = await this.prisma.user.update({
+        where: { id: Number(id) },
+        data: userData,
+        select: { id: true, username: true, email: true, phoneNumber: true, createdAt: true }
       });
+
+      return res.status(200).json({ status: 'success', message: 'User updated successfully', data: updatedUser });
     } catch (err) {
-      console.error('Error in UserController.update:', err.message);
       next(err);
     }
   }
 
-  /**
-   * Exclui um usuário.
-   */
   async delete(req, res, next) {
     try {
       const { id } = req.params;
-      console.log(`Deleting user with ID: ${id}`);
-      await this.userService.delete(id);
+
+      // Garante que o usuário existe
+      await this.prisma.user.findUnique({ where: { id: Number(id) } });
+
+      await this.prisma.user.delete({ where: { id: Number(id) } });
+
       return res.status(204).send();
     } catch (err) {
-      console.error('Error in UserController.delete:', err.message);
       next(err);
     }
   }

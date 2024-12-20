@@ -1,5 +1,5 @@
 // src/controllers/userController.js
-import { UserService } from '../services/userService.js';
+import { UserService } from './src/services/userService.j';
 
 import { AppError } from '../utils/AppError.js';
 

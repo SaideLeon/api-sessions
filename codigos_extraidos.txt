@@ -51,6 +51,9 @@ class App {
   }
 
   middlewares() {
+    // Configuração para proxies (necessária para express-rate-limit)
+    this.app.set('trust proxy', 1);
+
     // Segurança
     this.app.use(helmet()); // Segurança com headers HTTP
     this.app.use(cors({
@@ -107,6 +110,7 @@ class App {
   }
 
   errorHandling() {
+    // Middleware global de tratamento de erros
     this.app.use(errorHandler);
   }
 
@@ -158,6 +162,7 @@ process.on('SIGTERM', () => {
 });
 
 export default app;
+
 
 ================================================================================
 Arquivo: ./src/config/database.js
@@ -211,41 +216,103 @@ Arquivo: ./src/controllers/userController.js
 // src/controllers/userController.js
 import { UserService } from '../services/userService.js';
 
+import { AppError } from '../utils/AppError.js';
+
 export class UserController {
   constructor() {
-    this.userService = new UserService();
+  this.userService = new UserService();
+}
+
+  /**
+   * Cria um novo usuário.
+   */async create(req, res, next) {
+        try {
+          console.log('UserService instance:', this.userService); // Verifique se é undefined
+          console.log('Creating user with data:', req.body);
+          const user = await this.userService.create(req.body);
+          return res.status(201).json({
+            status: 'success',
+            message: 'User created successfully',
+            data: user,
+          });
+        } catch (err) {
+          console.error('Error in UserController.create:', err.message);
+          next(err);
+        }
+}
+
+  
+
+  /**
+   * Busca todos os usuários.
+   */
+  async find(req, res, next) {
+    try {
+      console.log('Fetching all users...');
+      const users = await this.userService.findAll();
+      return res.status(200).json({
+        status: 'success',
+        data: users
+      });
+    } catch (err) {
+      console.error('Error in UserController.find:', err.message);
+      next(err);
+    }
   }
 
-  async create(req, res) {
-    const userData = req.body;
-    const user = await this.userService.create(userData);
-    return res.status(201).json(user);
+  /**
+   * Busca um usuário por ID.
+   */
+  async findOne(req, res, next) {
+    try {
+      const { id } = req.params;
+      console.log(`Fetching user with ID: ${id}`);
+      const user = await this.userService.findById(id);
+      return res.status(200).json({
+        status: 'success',
+        data: user
+      });
+    } catch (err) {
+      console.error('Error in UserController.findOne:', err.message);
+      next(err);
+    }
   }
 
-  async find(req, res) {
-    const users = await this.userService.findAll();
-    return res.json(users);
+  /**
+   * Atualiza um usuário.
+   */
+  async update(req, res, next) {
+    try {
+      const { id } = req.params;
+      console.log(`Updating user with ID: ${id}`, req.body);
+      const updatedUser = await this.userService.update(id, req.body);
+      return res.status(200).json({
+        status: 'success',
+        message: 'User updated successfully',
+        data: updatedUser
+      });
+    } catch (err) {
+      console.error('Error in UserController.update:', err.message);
+      next(err);
+    }
   }
 
-  async findOne(req, res) {
-    const { id } = req.params;
-    const user = await this.userService.findById(id);
-    return res.json(user);
-  }
-
-  async update(req, res) {
-    const { id } = req.params;
-    const userData = req.body;
-    const user = await this.userService.update(id, userData);
-    return res.json(user);
-  }
-
-  async delete(req, res) {
-    const { id } = req.params;
-    await this.userService.delete(id);
-    return res.status(204).send();
+  /**
+   * Exclui um usuário.
+   */
+  async delete(req, res, next) {
+    try {
+      const { id } = req.params;
+      console.log(`Deleting user with ID: ${id}`);
+      await this.userService.delete(id);
+      return res.status(204).send();
+    } catch (err) {
+      console.error('Error in UserController.delete:', err.message);
+      next(err);
+    }
   }
 }
+
 
 ================================================================================
 Arquivo: ./src/controllers/sessionController.js
@@ -820,9 +887,16 @@ export class UserService {
     this.prisma = new PrismaClient();
   }
 
+  /**
+   * Cria um novo usuário no banco de dados.
+   * @param {Object} userData - Dados do usuário.
+   * @returns {Object} - Usuário criado.
+   */
   async create(userData) {
     const { username, email, password, phoneNumber } = userData;
 
+    console.log('Validating user data...');
+    // Verificar se o usuário já existe com o mesmo email, username ou telefone
     const userExists = await this.prisma.user.findFirst({
       where: {
         OR: [
@@ -834,11 +908,16 @@ export class UserService {
     });
 
     if (userExists) {
-      throw new AppError('User already exists');
+      console.error('User already exists:', userExists);
+      throw new AppError('User already exists', 400);
     }
 
+    console.log('Hashing password...');
+    // Criptografar a senha
     const hashedPassword = await hash(password, 10);
 
+    console.log('Creating user in the database...');
+    // Criar o usuário
     const user = await this.prisma.user.create({
       data: {
         username,
@@ -855,10 +934,16 @@ export class UserService {
       }
     });
 
+    console.log('User created successfully:', user);
     return user;
   }
 
+  /**
+   * Retorna todos os usuários.
+   * @returns {Array} - Lista de usuários.
+   */
   async findAll() {
+    console.log('Fetching all users...');
     return this.prisma.user.findMany({
       select: {
         id: true,
@@ -870,7 +955,13 @@ export class UserService {
     });
   }
 
+  /**
+   * Busca um usuário por ID.
+   * @param {number} id - ID do usuário.
+   * @returns {Object} - Dados do usuário.
+   */
   async findById(id) {
+    console.log(`Fetching user with ID: ${id}`);
     const user = await this.prisma.user.findUnique({
       where: { id: Number(id) },
       select: {
@@ -883,24 +974,26 @@ export class UserService {
     });
 
     if (!user) {
+      console.error('User not found:', id);
       throw new AppError('User not found', 404);
     }
 
     return user;
   }
 
+  /**
+   * Atualiza os dados de um usuário.
+   * @param {number} id - ID do usuário.
+   * @param {Object} userData - Novos dados do usuário.
+   * @returns {Object} - Usuário atualizado.
+   */
   async update(id, userData) {
-    const { username, email, phoneNumber } = userData;
-
-    const user = await this.findById(id);
+    console.log(`Updating user with ID: ${id}`);
+    await this.findById(id); // Garante que o usuário existe
 
     const updatedUser = await this.prisma.user.update({
       where: { id: Number(id) },
-      data: {
-        username,
-        email,
-        phoneNumber
-      },
+      data: userData,
       select: {
         id: true,
         username: true,
@@ -910,16 +1003,26 @@ export class UserService {
       }
     });
 
+    console.log('User updated successfully:', updatedUser);
     return updatedUser;
   }
 
+  /**
+   * Exclui um usuário.
+   * @param {number} id - ID do usuário.
+   */
   async delete(id) {
-    await this.findById(id);
+    console.log(`Deleting user with ID: ${id}`);
+    await this.findById(id); // Garante que o usuário existe
+
     await this.prisma.user.delete({
       where: { id: Number(id) }
     });
+
+    console.log('User deleted successfully.');
   }
 }
+
 
 ================================================================================
 Arquivo: ./src/services/sessionService.js

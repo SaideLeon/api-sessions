@@ -1,6 +1,6 @@
 // src/routes/userRoutes.js
 import { Router } from 'express';
-import { UserController } from '../controllers/userController.js';
+import { UserController } from '../controllers/userController.mjs';
 import { authenticate } from '../middlewares/auth.js';
 import { validate, schemas } from '../middlewares/validate.js';
 import { authLimiter } from '../middlewares/rateLimit.js';

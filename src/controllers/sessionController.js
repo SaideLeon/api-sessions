@@ -1,5 +1,5 @@
-// src/controllers/sessionController.js
-import { SessionService } from '../services/sessionService.js';
+// src/controllers/sessionController.mjs
+import SessionService from '../services/sessionService.mjs';
 
 export class SessionController {
   constructor() {

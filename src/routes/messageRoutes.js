@@ -1,8 +1,8 @@
 // src/routes/messageRoutes.js
 import { Router } from 'express';
-import { MessageController } from '../controllers/messageController.js';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
+import { MessageController } from '../controllers/messageController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
 
 const router = Router();
 const messageController = new MessageController();

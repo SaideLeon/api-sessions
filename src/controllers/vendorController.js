@@ -1,5 +1,5 @@
 // src/controllers/vendorController.js
-import { VendorService } from '../services/vendorService.js';
+import VendorService from '../services/vendorService.mjs';
 
 export class VendorController {
   constructor() {

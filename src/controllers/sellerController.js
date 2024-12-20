@@ -1,5 +1,5 @@
 // src/controllers/sellerController.js
-import { SellerService } from '../services/sellerService.js';
+import SellerService from '../services/sellerService.mjs';
 
 export class SellerController {
   constructor() {

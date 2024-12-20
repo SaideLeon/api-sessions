@@ -1,5 +1,5 @@
 // src/controllers/messageController.js
-import { MessageService } from '../services/messageService.js';
+import MessageService from '../services/messageService.mjs';
 
 export class MessageController {
   constructor() {

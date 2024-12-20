@@ -1,29 +1,32 @@
 // src/controllers/userController.js
 import { UserService } from '../services/userService.js';
+
 import { AppError } from '../utils/AppError.js';
 
 export class UserController {
   constructor() {
-    this.userService = new UserService();
-  }
+  this.userService = new UserService();
+}
 
   /**
    * Cria um novo usuário.
-   */
-  async create(req, res, next) {
-    try {
-      console.log('Creating user with data:', req.body);
-      const user = await this.userService.create(req.body);
-      return res.status(201).json({
-        status: 'success',
-        message: 'User created successfully',
-        data: user
-      });
-    } catch (err) {
-      console.error('Error in UserController.create:', err.message);
-      next(err);
-    }
-  }
+   */async create(req, res, next) {
+        try {
+          console.log('UserService instance:', this.userService); // Verifique se é undefined
+          console.log('Creating user with data:', req.body);
+          const user = await this.userService.create(req.body);
+          return res.status(201).json({
+            status: 'success',
+            message: 'User created successfully',
+            data: user,
+          });
+        } catch (err) {
+          console.error('Error in UserController.create:', err.message);
+          next(err);
+        }
+}
+
+  
 
   /**
    * Busca todos os usuários.

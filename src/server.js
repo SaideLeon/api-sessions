@@ -18,8 +18,8 @@ import vendorRoutes from './routes/vendorRoutes.js';
 import sellerRoutes from './routes/sellerRoutes.js';
 
 // Middlewares
-import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.js';
-import { limiter } from './middlewares/rateLimit.js';
+import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.mjs';
+import { limiter } from './middlewares/rateLimit.mjs';
 
 // Configurações
 config(); // Carrega variáveis de ambiente

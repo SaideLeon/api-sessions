@@ -1,0 +1,98 @@
+schemaVersion: 1.0
+metadata:
+  name: whatsgenai-api
+  description: WhatsGenAI API Service
+  labels:
+    version: 1.0.0
+    tier: backend
+    environment: production
+
+endpoints:
+  - name: api-service
+    service:
+      port: 3000
+      basePath: /api/v1
+    type: REST
+    networking:
+      targetPort: 3000
+      ingress:
+        hostNames:
+          - whatsgenai.choreoapps.dev
+          - apisessions.choreoapps.dev
+    security:
+      cors:
+        enabled: true
+        allowOrigins:
+          - https://whatsgenai.choreoapps.dev
+          - https://apisessions.choreoapps.dev
+      rateLimiting:
+        enabled: true
+        window: 900000  # 15 minutes in milliseconds
+        max: 50
+
+buildConfig:
+  env:
+    - name: NODE_ENV
+      value: "production"
+    - name: PORT
+      value: "3000"
+    - name: API_VERSION
+      value: "v1"
+    - name: DATABASE_URL
+      value: "postgresql://whatsgenaidb_owner:jLvOlhi5C4yk@ep-icy-frog-a5xp8wqy-pooler.us-east-2.aws.neon.tech/whatsgenaidb?sslmode=require"
+    - name: JWT_SECRET
+      type: REQUIRED
+      description: "JWT secret key for authentication"
+    - name: JWT_EXPIRES_IN
+      value: "1h"
+    - name: BCRYPT_ROUNDS
+      value: "12"
+    - name: LOG_LEVEL
+      value: "error"
+    - name: LOG_FORMAT
+      value: "json"
+
+resources:
+  cpu: "1.0"
+  memory: "1Gi"
+  storage:
+    logs:
+      mountPath: /var/log/app
+      capacity: "1Gi"
+
+monitoring:
+  logs:
+    paths:
+      - /var/log/app/error.log
+      - /var/log/app/combined.log
+
+security:
+  policies:
+    helmet:
+      enabled: true
+      config:
+        hidePoweredBy: true
+        hsts:
+          enabled: true
+          maxAge: 31536000
+          includeSubDomains: true
+          preload: true
+    csrf:
+      enabled: true
+    xss:
+      enabled: true
+
+cache:
+  enabled: true
+  config:
+    ttl: 7200
+    maxSize: 500
+
+healthCheck:
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 15
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3

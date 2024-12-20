@@ -77,7 +77,7 @@ class App {
 
   routes() {
     // Health check
-    this.app.get('/health', (req, res) => {
+    this.app.get('/api/v1/health', (req, res) => {
       res.status(200).json({
         status: 'success',
         message: 'Server is running',

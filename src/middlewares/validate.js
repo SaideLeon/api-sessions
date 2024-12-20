@@ -1,19 +1,33 @@
 // src/middlewares/validate.js
 import { object, string } from 'yup';
 import { AppError } from '../utils/AppError.js';
+import { AppError } from '../utils/AppError.js';
 
+/**
+ * Middleware de validação para schemas.
+ * @param {Object} schema - Esquema de validação (Yup).
+ * @returns {Function} Middleware para validar requisições.
+ */
 export const validate = (schema) => async (req, res, next) => {
   try {
+    // Validação do esquema fornecido
     await schema.validate({
       body: req.body,
       query: req.query,
       params: req.params,
-    });
+    }, { abortEarly: false }); // Garante que todos os erros sejam capturados
     next();
   } catch (err) {
-    throw new AppError(err.message, 400);
+    // Mensagens de erro detalhadas
+    const errors = err.inner?.map((e) => ({
+      field: e.path,
+      message: e.message,
+    })) || [{ message: err.message }];
+
+    next(new AppError('Validation error', 400, errors));
   }
 };
+
 
 // Schemas de validação
 export const schemas = {

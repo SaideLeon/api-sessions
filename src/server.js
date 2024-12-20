@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 // Rotas
-import userRoutes from './routes/userRoutes.js';
+import userRoutes from './routes/userRoutes.mjs';
 import sessionRoutes from './routes/sessionRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import vendorRoutes from './routes/vendorRoutes.js';

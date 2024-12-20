@@ -43,6 +43,7 @@ class App {
 
   middlewares() {
     // Segurança
+    this.app.set('trust proxy', true);
     this.app.use(helmet()); // Segurança com headers HTTP
     this.app.use(cors({
       origin: process.env.CORS_ORIGIN || '*',

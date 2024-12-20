@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int       @id @default(autoincrement())
+  username    String    @unique
+  email       String    @unique
+  password    String
+  phoneNumber String    @unique
+  createdAt   DateTime  @default(now())
+  sessions    Session[]
+}
+
+model Session {
+  id        Int       @id @default(autoincrement())
+  sessionId String    @unique
+  userId    Int
+  createdAt DateTime  @default(now())
+  messages  Message[]
+  seller    Seller[]
+  user      User      @relation(fields: [userId], references: [id])
+  vendors   Vendor[]
+}
+
+model Message {
+  id          Int      @id @default(autoincrement())
+  sessionId   String
+  sender      String
+  content     String
+  mediaUrl    String?
+  createdAt   DateTime @default(now())
+  phoneNumber String
+  session     Session  @relation(fields: [sessionId], references: [sessionId])
+}
+
+model Vendor {
+  id          Int      @id @default(autoincrement())
+  sessionId   String   @unique
+  phoneNumber String
+  vendorName  String
+  createdAt   DateTime @default(now())
+  session     Session  @relation(fields: [sessionId], references: [sessionId])
+}
+
+model Seller {
+  id          Int      @id @default(autoincrement())
+  sessionId   String
+  sellerName  String
+  product     String
+  description String
+  image       String?
+  benefits    String
+  createdAt   DateTime @default(now())
+  session     Session  @relation(fields: [sessionId], references: [sessionId])
+
+  @@unique([sessionId, sellerName])
+}

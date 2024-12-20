@@ -1,8 +1,8 @@
 // src/routes/sessionRoutes.js
 import { Router } from 'express';
-import { SessionController } from '../controllers/sessionController.js';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
+import SessionController from '../controllers/sessionController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
 
 const router = Router();
 const sessionController = new SessionController();

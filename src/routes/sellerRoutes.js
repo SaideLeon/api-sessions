@@ -1,6 +1,6 @@
 // src/routes/sellerRoutes.js
 import { Router } from 'express';
-import { SellerController } from '../controllers/sellerController.js';
+import SellerController from '../controllers/sellerController.mjs';
 import { authenticate } from '../middlewares/auth.mjs';
 import { validate, schemas } from '../middlewares/validate.mjs';
 

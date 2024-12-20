@@ -1,6 +1,6 @@
 // src/routes/vendorRoutes.js
 import { Router } from 'express';
-import { VendorController } from '../controllers/vendorController.js';
+import VendorController from '../controllers/vendorController.mjs';
 import { authenticate } from '../middlewares/auth.js';
 import { validate, schemas } from '../middlewares/validate.js';
 

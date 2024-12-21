@@ -378,6 +378,117 @@ class SellerController {
 export default SellerController;
 
 ================================================================================
+Arquivo: ./src/controllers/authController.mjs
+================================================================================
+
+// controllers/authController.mjs
+import { PrismaClient } from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
+import { generateToken } from '../utils/generateToken.mjs';
+import { comparePasswords } from '../utils/hashPassword.mjs';
+
+const prisma = new PrismaClient();
+
+class AuthController {
+  constructor() {
+    this.login = this.login.bind(this);
+    this.logout = this.logout.bind(this);
+    this.refreshToken = this.refreshToken.bind(this);
+  }
+
+  async login(req, res, next) {
+    try {
+      const { email, password } = req.body;
+
+      // 1. Verificar se usuário existe
+      const user = await prisma.user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          username: true,
+          phoneNumber: true
+        }
+      });
+
+      if (!user) {
+        throw new AppError('Invalid email or password', 401);
+      }
+
+      // 2. Verificar senha
+      const isPasswordValid = await comparePasswords(password, user.password);
+      if (!isPasswordValid) {
+        throw new AppError('Invalid email or password', 401);
+      }
+
+      // 3. Gerar token
+      const token = generateToken(user.id);
+
+      // 4. Remover senha do objeto de resposta
+      const { password: _, ...userWithoutPassword } = user;
+
+      // 5. Criar sessão de login
+      await prisma.loginSession.create({
+        data: {
+          userId: user.id,
+          token,
+          userAgent: req.headers['user-agent'] || 'unknown',
+          ipAddress: req.ip
+        }
+      });
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          user: userWithoutPassword,
+          token
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async logout(req, res, next) {
+    try {
+      const { token } = req;
+
+      // Invalidar token atual
+      await prisma.loginSession.update({
+        where: { token },
+        data: { isValid: false }
+      });
+
+      res.status(204).json({
+        status: 'success',
+        data: null
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async refreshToken(req, res, next) {
+    try {
+      const { user } = req;
+      const newToken = generateToken(user.id);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          token: newToken
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+}
+
+export default AuthController;
+
+================================================================================
 Arquivo: ./src/controllers/vendorController.mjs
 ================================================================================
 
@@ -591,6 +702,16 @@ Arquivo: ./src/middlewares/validate.mjs
 import { object, string } from 'yup';
 import AppError from '../utils/AppError.mjs';
 
+export const schemas = {
+  auth: {
+    login: object({
+      body: object({
+        email: string().email().required().label('Email'),
+        password: string().required().min(6).label('Password')
+      })
+    })
+  },
+  
 export const validate = (schema) => async (req, res, next) => {
     try {
         await schema.validate({
@@ -742,6 +863,42 @@ router
 export default router;
 
 ================================================================================
+Arquivo: ./src/routes/authRoutes.mjs
+================================================================================
+
+// routes/authRoutes.mjs
+import { Router } from 'express';
+import AuthController from '../controllers/authController.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { authLimiter } from '../middlewares/rateLimit.mjs';
+
+const router = Router();
+const authController = new AuthController();
+
+router.post(
+  '/login',
+  authLimiter,
+  validate(schemas.auth.login),
+  authController.login
+);
+
+router.post(
+  '/logout',
+  authenticate,
+  authController.logout
+);
+
+router.post(
+  '/refresh-token',
+  authenticate,
+  authController.refreshToken
+);
+
+export default router;
+
+
+================================================================================
 Arquivo: ./src/routes/userRoutes.mjs
 ================================================================================
 
@@ -840,13 +997,29 @@ export default router;
 Arquivo: ./src/utils/hashPassword.js
 ================================================================================
 
+// utils/hashPassword.mjs
+import bcrypt from 'bcrypt';
+import env from '../config/env.mjs';
 
+export const hashPassword = async (password) => {
+  return bcrypt.hash(password, Number(env.BCRYPT_ROUNDS));
+};
 
 ================================================================================
 Arquivo: ./src/utils/generateToken.js
 ================================================================================
 
+// utils/generateToken.mjs
+import jwt from 'jsonwebtoken';
+import env from '../config/env.mjs';
 
+export const generateToken = (userId) => {
+  return jwt.sign(
+    { id: userId },
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_EXPIRES_IN }
+  );
+};
 
 ================================================================================
 Arquivo: ./src/utils/validators.js
@@ -1448,6 +1621,19 @@ model User {
   phoneNumber String    @unique
   createdAt   DateTime  @default(now())
   sessions    Session[]
+  loginSessions LoginSession[]
+}
+
+model LoginSession {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  userAgent String
+  ipAddress String
+  isValid   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Session {

@@ -15,6 +15,19 @@ model User {
   phoneNumber String    @unique
   createdAt   DateTime  @default(now())
   sessions    Session[]
+  loginSessions LoginSession[]
+}
+
+model LoginSession {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  userAgent String
+  ipAddress String
+  isValid   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Session {

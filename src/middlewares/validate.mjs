@@ -1,6 +1,16 @@
 import { object, string } from 'yup';
 import AppError from '../utils/AppError.mjs';
 
+export const schemas = {
+  auth: {
+    login: object({
+      body: object({
+        email: string().email().required().label('Email'),
+        password: string().required().min(6).label('Password')
+      })
+    })
+  },
+  
 export const validate = (schema) => async (req, res, next) => {
     try {
         await schema.validate({

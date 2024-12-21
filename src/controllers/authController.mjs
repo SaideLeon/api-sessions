@@ -2,7 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 import AppError from '../utils/AppError.mjs';
 import { generateToken } from '../utils/generateToken.js';
-import { comparePasswords } from '../utils/hashPassword.mjs';
+import { comparePasswords } from '../utils/hashPassword.js';
 
 const prisma = new PrismaClient();
 

@@ -1,6 +1,6 @@
 // src/controllers/userController.mjs
 import UserService from '../services/userService.mjs';
-import { AppError } from '../utils/AppError.js';
+import { AppError } from '../utils/AppError.mjs';
 
 class UserController {
   constructor() {

@@ -1,6 +1,6 @@
 import prisma from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
-import AppError from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 const { PrismaClient } = prisma;
 

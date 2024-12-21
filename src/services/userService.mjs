@@ -1,6 +1,6 @@
 import prisma from '@prisma/client';
 import bcrypt from 'bcrypt';
-import AppError from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 const { PrismaClient } = prisma;
 

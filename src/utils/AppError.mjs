@@ -1,5 +1,5 @@
-// src/utils/AppError.js
-export class AppError {
+// src/utils/AppError.mjs
+class AppError {
   constructor(message, statusCode = 400, errors = []) {
     this.message = message;
     this.statusCode = statusCode;
@@ -10,3 +10,4 @@ export class AppError {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+export default AppError;

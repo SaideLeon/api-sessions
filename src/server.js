@@ -12,10 +12,10 @@ import { dirname, join } from 'path';
 
 // Rotas
 import userRoutes from './routes/userRoutes.mjs';
-import sessionRoutes from './routes/sessionRoutes.js';
-import messageRoutes from './routes/messageRoutes.js';
-import vendorRoutes from './routes/vendorRoutes.js';
-import sellerRoutes from './routes/sellerRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.mjs';
+import messageRoutes from './routes/messageRoutes.mjs';
+import vendorRoutes from './routes/vendorRoutes.mjs';
+import sellerRoutes from './routes/sellerRoutes.mjs';
 
 // Middlewares
 import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.mjs';

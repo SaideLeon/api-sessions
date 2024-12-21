@@ -1,7 +1,7 @@
 ARQUIVOS JAVASCRIPT
 ================================================================================
 Diretório base: ./src
-================================================================================
+========================================
 
 ================================================================================
 Arquivo: ./src/server.js
@@ -20,15 +20,15 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 // Rotas
-import userRoutes from './routes/userRoutes.js';
-import sessionRoutes from './routes/sessionRoutes.js';
-import messageRoutes from './routes/messageRoutes.js';
-import vendorRoutes from './routes/vendorRoutes.js';
-import sellerRoutes from './routes/sellerRoutes.js';
+import userRoutes from './routes/userRoutes.mjs';
+import sessionRoutes from './routes/sessionRoutes.mjs';
+import messageRoutes from './routes/messageRoutes.mjs';
+import vendorRoutes from './routes/vendorRoutes.mjs';
+import sellerRoutes from './routes/sellerRoutes.mjs';
 
 // Middlewares
-import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.js';
-import { limiter } from './middlewares/rateLimit.js';
+import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.mjs';
+import { limiter } from './middlewares/rateLimit.mjs';
 
 // Configurações
 config(); // Carrega variáveis de ambiente
@@ -210,154 +210,92 @@ export default {
 };
 
 ================================================================================
-Arquivo: ./src/controllers/userController.js
+Arquivo: ./src/controllers/userController.mjs
 ================================================================================
 
-// src/controllers/userController.js
-import { UserService } from '../services/userService.js';
+// src/controllers/userController.mjs
+import UserService from '../services/userService.mjs';
+import AppError from '../utils/AppError.mjs';
 
-import { AppError } from '../utils/AppError.js';
-
-export class UserController {
+class UserController {
   constructor() {
-  this.userService = new UserService();
-}
+    this.userService = new UserService();
+  }
 
-  /**
-   * Cria um novo usuário.
-   */async create(req, res, next) {
-        try {
-          console.log('UserService instance:', this.userService); // Verifique se é undefined
-          console.log('Creating user with data:', req.body);
-          const user = await this.userService.create(req.body);
-          return res.status(201).json({
-            status: 'success',
-            message: 'User created successfully',
-            data: user,
-          });
-        } catch (err) {
-          console.error('Error in UserController.create:', err.message);
-          next(err);
-        }
-}
+  async create(req, res, next) {
+    try {
+      const user = await this.userService.create(req.body);
+      return res.status(201).json({
+        status: 'success',
+        message: 'User created successfully',
+        data: user,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 
-  
-
-  /**
-   * Busca todos os usuários.
-   */
   async find(req, res, next) {
     try {
-      console.log('Fetching all users...');
       const users = await this.userService.findAll();
       return res.status(200).json({
         status: 'success',
-        data: users
+        data: users,
       });
     } catch (err) {
-      console.error('Error in UserController.find:', err.message);
       next(err);
     }
   }
 
-  /**
-   * Busca um usuário por ID.
-   */
   async findOne(req, res, next) {
     try {
       const { id } = req.params;
-      console.log(`Fetching user with ID: ${id}`);
       const user = await this.userService.findById(id);
       return res.status(200).json({
         status: 'success',
-        data: user
+        data: user,
       });
     } catch (err) {
-      console.error('Error in UserController.findOne:', err.message);
       next(err);
     }
   }
 
-  /**
-   * Atualiza um usuário.
-   */
   async update(req, res, next) {
     try {
       const { id } = req.params;
-      console.log(`Updating user with ID: ${id}`, req.body);
       const updatedUser = await this.userService.update(id, req.body);
       return res.status(200).json({
         status: 'success',
         message: 'User updated successfully',
-        data: updatedUser
+        data: updatedUser,
       });
     } catch (err) {
-      console.error('Error in UserController.update:', err.message);
       next(err);
     }
   }
 
-  /**
-   * Exclui um usuário.
-   */
   async delete(req, res, next) {
     try {
       const { id } = req.params;
-      console.log(`Deleting user with ID: ${id}`);
       await this.userService.delete(id);
       return res.status(204).send();
     } catch (err) {
-      console.error('Error in UserController.delete:', err.message);
       next(err);
     }
   }
 }
 
+export default UserController;
+
 
 ================================================================================
-Arquivo: ./src/controllers/sessionController.js
-================================================================================
-
-// src/controllers/sessionController.js
-import { SessionService } from '../services/sessionService.js';
-
-export class SessionController {
-  constructor() {
-    this.sessionService = new SessionService();
-  }
-
-  async create(req, res) {
-    const { userId } = req.body;
-    const session = await this.sessionService.create(userId);
-    return res.status(201).json(session);
-  }
-
-  async find(req, res) {
-    const sessions = await this.sessionService.findAll();
-    return res.json(sessions);
-  }
-
-  async findByUser(req, res) {
-    const { userId } = req.params;
-    const sessions = await this.sessionService.findByUser(userId);
-    return res.json(sessions);
-  }
-
-  async delete(req, res) {
-    const { id } = req.params;
-    await this.sessionService.delete(id);
-    return res.status(204).send();
-  }
-}
-
-================================================================================
-Arquivo: ./src/controllers/messageController.js
+Arquivo: ./src/controllers/messageController.mjs
 ================================================================================
 
 // src/controllers/messageController.js
-import { MessageService } from '../services/messageService.js';
+import MessageService from '../services/messageService.mjs';
 
-export class MessageController {
+class MessageController {
   constructor() {
     this.messageService = new MessageService();
   }
@@ -387,58 +325,16 @@ export class MessageController {
     return res.status(204).send();
   }
 }
+export default MessageController;
 
 ================================================================================
-Arquivo: ./src/controllers/vendorController.js
-================================================================================
-
-// src/controllers/vendorController.js
-import { VendorService } from '../services/vendorService.js';
-
-export class VendorController {
-  constructor() {
-    this.vendorService = new VendorService();
-  }
-
-  async create(req, res) {
-    const vendorData = req.body;
-    const vendor = await this.vendorService.create(vendorData);
-    return res.status(201).json(vendor);
-  }
-
-  async findAll(req, res) {
-    const vendors = await this.vendorService.findAll();
-    return res.json(vendors);
-  }
-
-  async findOne(req, res) {
-    const { id } = req.params;
-    const vendor = await this.vendorService.findById(id);
-    return res.json(vendor);
-  }
-
-  async update(req, res) {
-    const { id } = req.params;
-    const vendorData = req.body;
-    const vendor = await this.vendorService.update(id, vendorData);
-    return res.json(vendor);
-  }
-
-  async delete(req, res) {
-    const { id } = req.params;
-    await this.vendorService.delete(id);
-    return res.status(204).send();
-  }
-}
-
-================================================================================
-Arquivo: ./src/controllers/sellerController.js
+Arquivo: ./src/controllers/sellerController.mjs
 ================================================================================
 
 // src/controllers/sellerController.js
-import { SellerService } from '../services/sellerService.js';
+import SellerService from '../services/sellerService.mjs';
 
-export class SellerController {
+class SellerController {
   constructor() {
     this.sellerService = new SellerService();
   }
@@ -474,328 +370,355 @@ export class SellerController {
     return res.status(204).send();
   }
 }
+export default SellerController;
 
 ================================================================================
-Arquivo: ./src/middlewares/auth.js
+Arquivo: ./src/controllers/vendorController.mjs
 ================================================================================
 
-// src/middlewares/auth.js
+// src/controllers/vendorController.js
+import VendorService from '../services/vendorService.mjs';
+
+class VendorController {
+  constructor() {
+    this.vendorService = new VendorService();
+  }
+
+  async create(req, res) {
+    const vendorData = req.body;
+    const vendor = await this.vendorService.create(vendorData);
+    return res.status(201).json(vendor);
+  }
+
+  async findAll(req, res) {
+    const vendors = await this.vendorService.findAll();
+    return res.json(vendors);
+  }
+
+  async findOne(req, res) {
+    const { id } = req.params;
+    const vendor = await this.vendorService.findById(id);
+    return res.json(vendor);
+  }
+
+  async update(req, res) {
+    const { id } = req.params;
+    const vendorData = req.body;
+    const vendor = await this.vendorService.update(id, vendorData);
+    return res.json(vendor);
+  }
+
+  async delete(req, res) {
+    const { id } = req.params;
+    await this.vendorService.delete(id);
+    return res.status(204).send();
+  }
+}
+export default VendorController;
+
+================================================================================
+Arquivo: ./src/controllers/sessionController.mjs
+================================================================================
+
+// src/controllers/sessionController.mjs
+import SessionService from '../services/sessionService.mjs';
+
+class SessionController {
+  constructor() {
+    this.sessionService = new SessionService();
+  }
+
+  async create(req, res) {
+    const { userId } = req.body;
+    const session = await this.sessionService.create(userId);
+    return res.status(201).json(session);
+  }
+
+  async find(req, res) {
+    const sessions = await this.sessionService.findAll();
+    return res.json(sessions);
+  }
+
+  async findByUser(req, res) {
+    const { userId } = req.params;
+    const sessions = await this.sessionService.findByUser(userId);
+    return res.json(sessions);
+  }
+
+  async delete(req, res) {
+    const { id } = req.params;
+    await this.sessionService.delete(id);
+    return res.status(204).send();
+  }
+}
+export default SessionController;
+
+================================================================================
+Arquivo: ./src/middlewares/auth.mjs
+================================================================================
+
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 const prisma = new PrismaClient();
 
 export const authenticate = async (req, res, next) => {
-  try {
-    // 1. Pegar o token
-    let token;
-    if (req.headers.authorization?.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    }
+    try {
+        // 1. Pegar o token
+        let token;
+        if (req.headers.authorization?.startsWith('Bearer')) {
+            token = req.headers.authorization.split(' ')[1];
+        }
 
-    if (!token) {
-      throw new AppError('Not authenticated. Please log in.', 401);
-    }
+        if (!token) {
+            throw new AppError('Not authenticated. Please log in.', 401);
+        }
 
-    // 2. Verificar o token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // 2. Verificar o token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3. Verificar se o usuário ainda existe
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        phoneNumber: true
-      }
-    });
+        // 3. Verificar se o usuário ainda existe
+        const user = await prisma.user.findUnique({
+            where: { id: decoded.id },
+            select: {
+                id: true,
+                email: true,
+                username: true,
+                phoneNumber: true
+            }
+        });
 
-    if (!user) {
-      throw new AppError('User no longer exists.', 401);
-    }
+        if (!user) {
+            throw new AppError('User no longer exists.', 401);
+        }
 
-    // 4. Colocar o usuário na request
-    req.user = user;
-    next();
-  } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      throw new AppError('Invalid token. Please log in again.', 401);
+        // 4. Colocar o usuário na request
+        req.user = user;
+        next();
+    } catch (error) {
+        if (error.name === 'JsonWebTokenError') {
+            throw new AppError('Invalid token. Please log in again.', 401);
+        }
+        if (error.name === 'TokenExpiredError') {
+            throw new AppError('Your token has expired. Please log in again.', 401);
+        }
+        throw error;
     }
-    if (error.name === 'TokenExpiredError') {
-      throw new AppError('Your token has expired. Please log in again.', 401);
-    }
-    throw error;
-  }
 };
 
 export const restrictTo = (...roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      throw new AppError('You do not have permission to perform this action', 403);
-    }
-    next();
-  };
+    return (req, res, next) => {
+        if (!roles.includes(req.user.role)) {
+            throw new AppError('You do not have permission to perform this action', 403);
+        }
+        next();
+    };
 };
 
 ================================================================================
-Arquivo: ./src/middlewares/error.js
+Arquivo: ./src/middlewares/error.mjs
 ================================================================================
 
-// src/middlewares/error.js
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 export const errorHandler = (err, req, res, next) => {
-  err.statusCode = err.statusCode || 500;
-  err.status = err.status || 'error';
+    err.statusCode = err.statusCode || 500;
+    err.status = err.status || 'error';
 
-  if (process.env.NODE_ENV === 'development') {
-    return res.status(err.statusCode).json({
-      status: err.status,
-      error: err,
-      message: err.message,
-      stack: err.stack
+    if (process.env.NODE_ENV === 'development') {
+        return res.status(err.statusCode).json({
+            status: err.status,
+            error: err,
+            message: err.message,
+            stack: err.stack
+        });
+    }
+
+    // Erro operacional, erro confiável: enviar mensagem para o cliente
+    if (err.isOperational) {
+        return res.status(err.statusCode).json({
+            status: err.status,
+            message: err.message
+        });
+    }
+
+    // Erro de programação ou outro erro não confiável: não vazar detalhes do erro
+    console.error('ERROR 💥', err);
+    return res.status(500).json({
+        status: 'error',
+        message: 'Something went wrong!'
     });
-  }
-
-  // Erro operacional, erro confiável: enviar mensagem para o cliente
-  if (err.isOperational) {
-    return res.status(err.statusCode).json({
-      status: err.status,
-      message: err.message
-    });
-  }
-
-  // Erro de programação ou outro erro não confiável: não vazar detalhes do erro
-  console.error('ERROR 💥', err);
-  return res.status(500).json({
-    status: 'error',
-    message: 'Something went wrong!'
-  });
 };
 
 // Middleware para lidar com erros assíncronos
 export const catchAsync = (fn) => {
-  return (req, res, next) => {
-    fn(req, res, next).catch(next);
-  };
+    return (req, res, next) => {
+        fn(req, res, next).catch(next);
+    };
 };
 
 // Middleware para rotas não encontradas
 export const notFound = (req, res, next) => {
-  const err = new AppError(`Can't find ${req.originalUrl} on this server!`, 404);
-  next(err);
+    const err = new AppError(`Can't find ${req.originalUrl} on this server!`, 404);
+    next(err);
 };
 
 // Handler para erros não tratados (rejeições não tratadas de promessas)
 export const handleUncaughtExceptions = () => {
-  process.on('uncaughtException', (err) => {
-    console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
-    process.exit(1);
-  });
+    process.on('uncaughtException', (err) => {
+        console.error('UNCAUGHT EXCEPTION! 💥 Shutting down...');
+        console.error(err.name, err.message);
+        process.exit(1);
+    });
 
-  process.on('unhandledRejection', (err) => {
-    console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-    console.error(err.name, err.message);
-    process.exit(1);
-  });
+    process.on('unhandledRejection', (err) => {
+        console.error('UNHANDLED REJECTION! 💥 Shutting down...');
+        console.error(err.name, err.message);
+        process.exit(1);
+    });
 };
 
 ================================================================================
-Arquivo: ./src/middlewares/validate.js
+Arquivo: ./src/middlewares/validate.mjs
 ================================================================================
 
-// src/middlewares/validate.js
 import { object, string } from 'yup';
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 export const validate = (schema) => async (req, res, next) => {
-  try {
-    await schema.validate({
-      body: req.body,
-      query: req.query,
-      params: req.params,
-    });
-    next();
-  } catch (err) {
-    throw new AppError(err.message, 400);
-  }
+    try {
+        await schema.validate({
+            body: req.body,
+            query: req.query,
+            params: req.params,
+        });
+        next();
+    } catch (err) {
+        throw new AppError(err.message, 400);
+    }
 };
 
 // Schemas de validação
 export const schemas = {
-  user: {
-    create: object({
-      body: object({
-        username: string().required().min(3),
-        email: string().email().required(),
-        password: string().required().min(6),
-        phoneNumber: string().required().min(10)
-      })
-    }),
-    update: object({
-      body: object({
-        username: string().min(3),
-        email: string().email(),
-        phoneNumber: string().min(10)
-      })
-    })
-  },
-  session: {
-    create: object({
-      body: object({
-        userId: string().required()
-      })
-    })
-  },
-  message: {
-    create: object({
-      body: object({
-        sessionId: string().required(),
-        sender: string().required(),
-        content: string().required(),
-        phoneNumber: string().required(),
-        mediaUrl: string().url().nullable()
-      })
-    })
-  },
-  vendor: {
-    create: object({
-      body: object({
-        sessionId: string().required(),
-        phoneNumber: string().required(),
-        vendorName: string().required()
-      })
-    })
-  },
-  seller: {
-    create: object({
-      body: object({
-        sessionId: string().required(),
-        sellerName: string().required(),
-        product: string().required(),
-        description: string().required(),
-        benefits: string().required(),
-        image: string().url().nullable()
-      })
-    })
-  }
+    user: {
+        create: object({
+            body: object({
+                username: string().required().min(3),
+                email: string().email().required(),
+                password: string().required().min(6),
+                phoneNumber: string().required().min(10)
+            })
+        }),
+        update: object({
+            body: object({
+                username: string().min(3),
+                email: string().email(),
+                phoneNumber: string().min(10)
+            })
+        })
+    },
+    session: {
+        create: object({
+            body: object({
+                userId: string().required()
+            })
+        })
+    },
+    message: {
+        create: object({
+            body: object({
+                sessionId: string().required(),
+                sender: string().required(),
+                content: string().required(),
+                phoneNumber: string().required(),
+                mediaUrl: string().url().nullable()
+            })
+        })
+    },
+    vendor: {
+        create: object({
+            body: object({
+                sessionId: string().required(),
+                phoneNumber: string().required(),
+                vendorName: string().required()
+            })
+        })
+    },
+    seller: {
+        create: object({
+            body: object({
+                sessionId: string().required(),
+                sellerName: string().required(),
+                product: string().required(),
+                description: string().required(),
+                benefits: string().required(),
+                image: string().url().nullable()
+            })
+        })
+    }
 };
 
 ================================================================================
-Arquivo: ./src/middlewares/rateLimit.js
+Arquivo: ./src/middlewares/rateLimit.mjs
 ================================================================================
 
-// src/middlewares/rateLimit.js
 import rateLimit from 'express-rate-limit';
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 export const limiter = rateLimit({
-  max: 100, // limite de 100 requisições
-  windowMs: 60 * 60 * 1000, // 1 hora
-  message: 'Too many requests from this IP, please try again in an hour!',
-  handler: (req, res) => {
-    throw new AppError('Too many requests from this IP, please try again in an hour!', 429);
-  }
+    max: 100, // limite de 100 requisições
+    windowMs: 60 * 60 * 1000, // 1 hora
+    message: 'Too many requests from this IP, please try again in an hour!',
+    handler: (req, res) => {
+        throw new AppError('Too many requests from this IP, please try again in an hour!', 429);
+    }
 });
 
 export const authLimiter = rateLimit({
-  max: 5, // limite de 5 tentativas
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  message: 'Too many login attempts from this IP, please try again in 15 minutes!',
-  handler: (req, res) => {
-    throw new AppError('Too many login attempts from this IP, please try again in 15 minutes!', 429);
-  }
+    max: 5, // limite de 5 tentativas
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    message: 'Too many login attempts from this IP, please try again in 15 minutes!',
+    handler: (req, res) => {
+        throw new AppError('Too many login attempts from this IP, please try again in 15 minutes!', 429);
+    }
 });
 
 ================================================================================
-Arquivo: ./src/routes/userRoutes.js
+Arquivo: ./src/routes/sellerRoutes.mjs
 ================================================================================
 
-// src/routes/userRoutes.js
+// src/routes/sellerRoutes.js
 import { Router } from 'express';
-import { UserController } from '../controllers/userController.js';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
-import { authLimiter } from '../middlewares/rateLimit.js';
+import SellerController from '../controllers/sellerController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
 
 const router = Router();
-const userController = new UserController();
+const sellerController = new SellerController();
 
 router
   .route('/')
-  .post(authLimiter, validate(schemas.user.create), userController.create)
-  .get(authenticate, userController.find);
+  .post(authenticate, validate(schemas.seller.create), sellerController.create)
+  .get(authenticate, sellerController.findAll);
 
 router
   .route('/:id')
-  .get(authenticate, userController.findOne)
-  .put(authenticate, validate(schemas.user.update), userController.update)
-  .delete(authenticate, userController.delete);
+  .get(authenticate, sellerController.findOne)
+  .put(authenticate, sellerController.update)
+  .delete(authenticate, sellerController.delete);
 
 export default router;
 
 ================================================================================
-Arquivo: ./src/routes/sessionRoutes.js
-================================================================================
-
-// src/routes/sessionRoutes.js
-import { Router } from 'express';
-import { SessionController } from '../controllers/sessionController.js';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
-
-const router = Router();
-const sessionController = new SessionController();
-
-router
-  .route('/')
-  .post(authenticate, validate(schemas.session.create), sessionController.create)
-  .get(authenticate, sessionController.find);
-
-router.get('/user/:userId', authenticate, sessionController.findByUser);
-
-router.delete('/:id', authenticate, sessionController.delete);
-
-export default router;
-
-================================================================================
-Arquivo: ./src/routes/messageRoutes.js
-================================================================================
-
-// src/routes/messageRoutes.js
-import { Router } from 'express';
-import { MessageController } from '../controllers/messageController.js';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
-
-const router = Router();
-const messageController = new MessageController();
-
-router
-  .route('/')
-  .post(authenticate, validate(schemas.message.create), messageController.create);
-
-router.get('/session/:sessionId', authenticate, messageController.findBySession);
-
-router
-  .route('/:id')
-  .put(authenticate, messageController.update)
-  .delete(authenticate, messageController.delete);
-
-export default router;
-
-================================================================================
-Arquivo: ./src/routes/vendorRoutes.js
+Arquivo: ./src/routes/vendorRoutes.mjs
 ================================================================================
 
 // src/routes/vendorRoutes.js
 import { Router } from 'express';
-import { VendorController } from '../controllers/vendorController.js';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
+import VendorController from '../controllers/vendorController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
 
 const router = Router();
 const vendorController = new VendorController();
@@ -814,28 +737,97 @@ router
 export default router;
 
 ================================================================================
-Arquivo: ./src/routes/sellerRoutes.js
+Arquivo: ./src/routes/userRoutes.mjs
 ================================================================================
 
-// src/routes/sellerRoutes.js
+// src/routes/userRoutes.mjs
+
 import { Router } from 'express';
-import { SellerController } from '../controllers/sellerController.js';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
+import UserController from '../controllers/userController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { authLimiter } from '../middlewares/rateLimit.mjs';
 
 const router = Router();
-const sellerController = new SellerController();
+const userController = new UserController();
+
+// Rota para criar e listar usuários
+router
+  .route('/')
+  .post(
+    authLimiter, // Limita tentativas de requisições (proteção contra brute force)
+    userController.create // Chama o método de criação no controlador
+  )
+  .get(
+    authenticate, // Requer autenticação
+    userController.find // Chama o método de busca de todos os usuários
+  );
+
+// Rota para operações específicas por ID de usuário
+router
+  .route('/:id')
+  .get(
+    authenticate, // Requer autenticação
+    userController.findOne // Chama o método para buscar um usuário específico
+  )
+  .put(
+    authenticate, // Requer autenticação
+    userController.update // Chama o método de atualização no controlador
+  )
+  .delete(
+    authenticate, // Requer autenticação
+    userController.delete // Chama o método de exclusão no controlador
+  );
+
+export default router;
+
+
+================================================================================
+Arquivo: ./src/routes/messageRoutes.mjs
+================================================================================
+
+// src/routes/messageRoutes.js
+import { Router } from 'express';
+import MessageController from '../controllers/messageController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+
+const router = Router();
+const messageController = new MessageController();
 
 router
   .route('/')
-  .post(authenticate, validate(schemas.seller.create), sellerController.create)
-  .get(authenticate, sellerController.findAll);
+  .post(authenticate, validate(schemas.message.create), messageController.create);
+
+router.get('/session/:sessionId', authenticate, messageController.findBySession);
 
 router
   .route('/:id')
-  .get(authenticate, sellerController.findOne)
-  .put(authenticate, sellerController.update)
-  .delete(authenticate, sellerController.delete);
+  .put(authenticate, messageController.update)
+  .delete(authenticate, messageController.delete);
+
+export default router;
+
+================================================================================
+Arquivo: ./src/routes/sessionRoutes.mjs
+================================================================================
+
+// src/routes/sessionRoutes.js
+import { Router } from 'express';
+import SessionController from '../controllers/sessionController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+
+const router = Router();
+const sessionController = new SessionController();
+
+router
+  .route('/')
+  .post(authenticate, validate(schemas.session.create), sessionController.create)
+  .get(authenticate, sessionController.find);
+
+router.get('/user/:userId', authenticate, sessionController.findByUser);
+
+router.delete('/:id', authenticate, sessionController.delete);
 
 export default router;
 
@@ -858,583 +850,570 @@ Arquivo: ./src/utils/validators.js
 
 
 ================================================================================
-Arquivo: ./src/utils/AppError.js
+Arquivo: ./src/utils/AppError.mjs
 ================================================================================
 
-// src/utils/AppError.js
-export class AppError {
-  constructor(message, statusCode = 400) {
+// src/utils/AppError.mjs
+class AppError {
+  constructor(message, statusCode = 400, errors = []) {
     this.message = message;
     this.statusCode = statusCode;
     this.status = `${statusCode}`.startsWith('4') ? 'error' : 'fail';
     this.isOperational = true;
+    this.errors = errors; // Inclui detalhes dos erros
 
     Error.captureStackTrace(this, this.constructor);
   }
 }
+export default AppError;
 
 ================================================================================
-Arquivo: ./src/services/userService.js
+Arquivo: ./src/services/userService.mjs
 ================================================================================
 
-// src/services/userService.js
-import { PrismaClient } from '@prisma/client';
-import { hash } from 'bcrypt';
-import { AppError } from '../utils/AppError.js';
+import prisma from '@prisma/client';
+import bcrypt from 'bcrypt';
+import AppError from '../utils/AppError.mjs';
 
-export class UserService {
-  constructor() {
-    this.prisma = new PrismaClient();
-  }
+const { PrismaClient } = prisma;
 
-  /**
-   * Cria um novo usuário no banco de dados.
-   * @param {Object} userData - Dados do usuário.
-   * @returns {Object} - Usuário criado.
-   */
-  async create(userData) {
-    const { username, email, password, phoneNumber } = userData;
-
-    console.log('Validating user data...');
-    // Verificar se o usuário já existe com o mesmo email, username ou telefone
-    const userExists = await this.prisma.user.findFirst({
-      where: {
-        OR: [
-          { email },
-          { username },
-          { phoneNumber }
-        ]
-      }
-    });
-
-    if (userExists) {
-      console.error('User already exists:', userExists);
-      throw new AppError('User already exists', 400);
+class UserService {
+    constructor() {
+        this.prisma = new PrismaClient();
     }
 
-    console.log('Hashing password...');
-    // Criptografar a senha
-    const hashedPassword = await hash(password, 10);
+    async create(userData) {
+        const { username, email, password, phoneNumber } = userData;
 
-    console.log('Creating user in the database...');
-    // Criar o usuário
-    const user = await this.prisma.user.create({
-      data: {
-        username,
-        email,
-        password: hashedPassword,
-        phoneNumber
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        phoneNumber: true,
-        createdAt: true
-      }
-    });
+        console.log('Validating user data...');
+        const userExists = await this.prisma.user.findFirst({
+            where: {
+                OR: [
+                    { email },
+                    { username },
+                    { phoneNumber }
+                ]
+            }
+        });
 
-    console.log('User created successfully:', user);
-    return user;
-  }
+        if (userExists) {
+            console.error('User already exists:', userExists);
+            throw new AppError('User already exists', 400);
+        }
 
-  /**
-   * Retorna todos os usuários.
-   * @returns {Array} - Lista de usuários.
-   */
-  async findAll() {
-    console.log('Fetching all users...');
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        phoneNumber: true,
-        createdAt: true
-      }
-    });
-  }
+        console.log('Hashing password...');
+        const hashedPassword = await bcrypt.hash(password, 10);
 
-  /**
-   * Busca um usuário por ID.
-   * @param {number} id - ID do usuário.
-   * @returns {Object} - Dados do usuário.
-   */
-  async findById(id) {
-    console.log(`Fetching user with ID: ${id}`);
-    const user = await this.prisma.user.findUnique({
-      where: { id: Number(id) },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        phoneNumber: true,
-        createdAt: true
-      }
-    });
+        console.log('Creating user in the database...');
+        const user = await this.prisma.user.create({
+            data: {
+                username,
+                email,
+                password: hashedPassword,
+                phoneNumber
+            },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                phoneNumber: true,
+                createdAt: true
+            }
+        });
 
-    if (!user) {
-      console.error('User not found:', id);
-      throw new AppError('User not found', 404);
+        console.log('User created successfully:', user);
+        return user;
     }
 
-    return user;
-  }
+    async findAll() {
+        console.log('Fetching all users...');
+        return this.prisma.user.findMany({
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                phoneNumber: true,
+                createdAt: true
+            }
+        });
+    }
 
-  /**
-   * Atualiza os dados de um usuário.
-   * @param {number} id - ID do usuário.
-   * @param {Object} userData - Novos dados do usuário.
-   * @returns {Object} - Usuário atualizado.
-   */
-  async update(id, userData) {
-    console.log(`Updating user with ID: ${id}`);
-    await this.findById(id); // Garante que o usuário existe
+    async findById(id) {
+        console.log(`Fetching user with ID: ${id}`);
+        const user = await this.prisma.user.findUnique({
+            where: { id: Number(id) },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                phoneNumber: true,
+                createdAt: true
+            }
+        });
 
-    const updatedUser = await this.prisma.user.update({
-      where: { id: Number(id) },
-      data: userData,
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        phoneNumber: true,
-        createdAt: true
-      }
-    });
+        if (!user) {
+            console.error('User not found:', id);
+            throw new AppError('User not found', 404);
+        }
 
-    console.log('User updated successfully:', updatedUser);
-    return updatedUser;
-  }
+        return user;
+    }
 
-  /**
-   * Exclui um usuário.
-   * @param {number} id - ID do usuário.
-   */
-  async delete(id) {
-    console.log(`Deleting user with ID: ${id}`);
-    await this.findById(id); // Garante que o usuário existe
+    async update(id, userData) {
+        console.log(`Updating user with ID: ${id}`);
+        await this.findById(id);
 
-    await this.prisma.user.delete({
-      where: { id: Number(id) }
-    });
+        const updatedUser = await this.prisma.user.update({
+            where: { id: Number(id) },
+            data: userData,
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                phoneNumber: true,
+                createdAt: true
+            }
+        });
 
-    console.log('User deleted successfully.');
-  }
+        console.log('User updated successfully:', updatedUser);
+        return updatedUser;
+    }
+
+    async delete(id) {
+        console.log(`Deleting user with ID: ${id}`);
+        await this.findById(id);
+
+        await this.prisma.user.delete({
+            where: { id: Number(id) }
+        });
+
+        console.log('User deleted successfully.');
+    }
 }
 
+export default UserService;
 
 ================================================================================
-Arquivo: ./src/services/sessionService.js
+Arquivo: ./src/services/sessionService.mjs
 ================================================================================
 
-// src/services/sessionService.js
-import { PrismaClient } from '@prisma/client';
+import prisma from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
-export class SessionService {
-  constructor() {
-    this.prisma = new PrismaClient();
-  }
+const { PrismaClient } = prisma;
 
-  async create(userId) {
-    const userExists = await this.prisma.user.findUnique({
-      where: { id: Number(userId) }
-    });
-
-    if (!userExists) {
-      throw new AppError('User not found', 404);
+class SessionService {
+    constructor() {
+        this.prisma = new PrismaClient();
     }
 
-    const session = await this.prisma.session.create({
-      data: {
-        sessionId: uuidv4(),
-        userId: Number(userId)
-      },
-      include: {
-        user: {
-          select: {
-            username: true,
-            email: true
-          }
+    async create(userId) {
+        const userExists = await this.prisma.user.findUnique({
+            where: { id: Number(userId) }
+        });
+
+        if (!userExists) {
+            throw new AppError('User not found', 404);
         }
-      }
-    });
 
-    return session;
-  }
+        const session = await this.prisma.session.create({
+            data: {
+                sessionId: uuidv4(),
+                userId: Number(userId)
+            },
+            include: {
+                user: {
+                    select: {
+                        username: true,
+                        email: true
+                    }
+                }
+            }
+        });
 
-  async findAll() {
-    return this.prisma.session.findMany({
-      include: {
-        user: {
-          select: {
-            username: true,
-            email: true
-          }
-        },
-        messages: true,
-        vendors: true,
-        seller: true
-      }
-    });
-  }
-
-  async findByUser(userId) {
-    const sessions = await this.prisma.session.findMany({
-      where: { userId: Number(userId) },
-      include: {
-        messages: true,
-        vendors: true,
-        seller: true
-      }
-    });
-
-    return sessions;
-  }
-
-  async delete(id) {
-    const session = await this.prisma.session.findUnique({
-      where: { id: Number(id) }
-    });
-
-    if (!session) {
-      throw new AppError('Session not found', 404);
+        return session;
     }
 
-    await this.prisma.session.delete({
-      where: { id: Number(id) }
-    });
-  }
+    async findAll() {
+        return this.prisma.session.findMany({
+            include: {
+                user: {
+                    select: {
+                        username: true,
+                        email: true
+                    }
+                },
+                messages: true,
+                vendors: true,
+                seller: true
+            }
+        });
+    }
+
+    async findByUser(userId) {
+        const sessions = await this.prisma.session.findMany({
+            where: { userId: Number(userId) },
+            include: {
+                messages: true,
+                vendors: true,
+                seller: true
+            }
+        });
+
+        return sessions;
+    }
+
+    async delete(id) {
+        const session = await this.prisma.session.findUnique({
+            where: { id: Number(id) }
+        });
+
+        if (!session) {
+            throw new AppError('Session not found', 404);
+        }
+
+        await this.prisma.session.delete({
+            where: { id: Number(id) }
+        });
+    }
 }
 
+export default SessionService;
+
 ================================================================================
-Arquivo: ./src/services/messageService.js
+Arquivo: ./src/services/messageService.mjs
 ================================================================================
 
-// src/services/messageService.js
-import { PrismaClient } from '@prisma/client';
-import { AppError } from '../utils/AppError.js';
+import prisma from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
 
-export class MessageService {
-  constructor() {
-    this.prisma = new PrismaClient();
-  }
+const { PrismaClient } = prisma;
 
-  async create(messageData) {
-    const { sessionId, sender, content, mediaUrl, phoneNumber } = messageData;
-
-    const sessionExists = await this.prisma.session.findUnique({
-      where: { sessionId }
-    });
-
-    if (!sessionExists) {
-      throw new AppError('Session not found', 404);
+class MessageService {
+    constructor() {
+        this.prisma = new PrismaClient();
     }
 
-    const message = await this.prisma.message.create({
-      data: {
-        sessionId,
-        sender,
-        content,
-        mediaUrl,
-        phoneNumber
-      }
-    });
+    async create(messageData) {
+        const { sessionId, sender, content, mediaUrl, phoneNumber } = messageData;
 
-    return message;
-  }
+        const sessionExists = await this.prisma.session.findUnique({
+            where: { sessionId }
+        });
 
-  async findBySession(sessionId) {
-    const messages = await this.prisma.message.findMany({
-      where: { sessionId },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        session: {
-          select: {
-            user: {
-              select: {
-                username: true
-              }
-            }
-          }
+        if (!sessionExists) {
+            throw new AppError('Session not found', 404);
         }
-      }
-    });
 
-    return messages;
-  }
+        const message = await this.prisma.message.create({
+            data: {
+                sessionId,
+                sender,
+                content,
+                mediaUrl,
+                phoneNumber
+            }
+        });
 
-  async update(id, messageData) {
-    const { content, mediaUrl } = messageData;
-
-    const message = await this.prisma.message.findUnique({
-      where: { id: Number(id) }
-    });
-
-    if (!message) {
-      throw new AppError('Message not found', 404);
+        return message;
     }
 
-    const updatedMessage = await this.prisma.message.update({
-      where: { id: Number(id) },
-      data: {
-        content,
-        mediaUrl
-      }
-    });
+    async findBySession(sessionId) {
+        const messages = await this.prisma.message.findMany({
+            where: { sessionId },
+            orderBy: { createdAt: 'asc' },
+            include: {
+                session: {
+                    select: {
+                        user: {
+                            select: {
+                                username: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
-    return updatedMessage;
-  }
-
-  async delete(id) {
-    const message = await this.prisma.message.findUnique({
-      where: { id: Number(id) }
-    });
-
-    if (!message) {
-      throw new AppError('Message not found', 404);
+        return messages;
     }
 
-    await this.prisma.message.delete({
-      where: { id: Number(id) }
-    });
-  }
+    async update(id, messageData) {
+        const { content, mediaUrl } = messageData;
+
+        const message = await this.prisma.message.findUnique({
+            where: { id: Number(id) }
+        });
+
+        if (!message) {
+            throw new AppError('Message not found', 404);
+        }
+
+        const updatedMessage = await this.prisma.message.update({
+            where: { id: Number(id) },
+            data: {
+                content,
+                mediaUrl
+            }
+        });
+
+        return updatedMessage;
+    }
+
+    async delete(id) {
+        const message = await this.prisma.message.findUnique({
+            where: { id: Number(id) }
+        });
+
+        if (!message) {
+            throw new AppError('Message not found', 404);
+        }
+
+        await this.prisma.message.delete({
+            where: { id: Number(id) }
+        });
+    }
 }
 
+export default MessageService;
+
 ================================================================================
-Arquivo: ./src/services/vendorService.js
+Arquivo: ./src/services/vendorService.mjs
 ================================================================================
 
-// src/services/vendorService.js
-import { PrismaClient } from '@prisma/client';
-import { AppError } from '../utils/AppError.js';
+import prisma from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
 
-export class VendorService {
-  constructor() {
-    this.prisma = new PrismaClient();
-  }
+const { PrismaClient } = prisma;
 
-  async create(vendorData) {
-    const { sessionId, phoneNumber, vendorName } = vendorData;
-
-    const sessionExists = await this.prisma.session.findUnique({
-      where: { sessionId }
-    });
-
-    if (!sessionExists) {
-      throw new AppError('Session not found', 404);
+class VendorService {
+    constructor() {
+        this.prisma = new PrismaClient();
     }
 
-    // Verificar se já existe um vendor com esse sessionId
-    const existingVendor = await this.prisma.vendor.findUnique({
-      where: { sessionId }
-    });
+    async create(vendorData) {
+        const { sessionId, phoneNumber, vendorName } = vendorData;
 
-    if (existingVendor) {
-      throw new AppError('Vendor already exists for this session', 400);
-    }
+        const sessionExists = await this.prisma.session.findUnique({
+            where: { sessionId }
+        });
 
-    const vendor = await this.prisma.vendor.create({
-      data: {
-        sessionId,
-        phoneNumber,
-        vendorName
-      }
-    });
-
-    return vendor;
-  }
-
-  async findAll() {
-    const vendors = await this.prisma.vendor.findMany({
-      include: {
-        session: {
-          select: {
-            user: {
-              select: {
-                username: true
-              }
-            }
-          }
+        if (!sessionExists) {
+            throw new AppError('Session not found', 404);
         }
-      }
-    });
 
-    return vendors;
-  }
+        const existingVendor = await this.prisma.vendor.findUnique({
+            where: { sessionId }
+        });
 
-  async findById(id) {
-    const vendor = await this.prisma.vendor.findUnique({
-      where: { id: Number(id) },
-      include: {
-        session: {
-          select: {
-            user: {
-              select: {
-                username: true
-              }
-            }
-          }
+        if (existingVendor) {
+            throw new AppError('Vendor already exists for this session', 400);
         }
-      }
-    });
 
-    if (!vendor) {
-      throw new AppError('Vendor not found', 404);
+        const vendor = await this.prisma.vendor.create({
+            data: {
+                sessionId,
+                phoneNumber,
+                vendorName
+            }
+        });
+
+        return vendor;
     }
 
-    return vendor;
-  }
+    async findAll() {
+        const vendors = await this.prisma.vendor.findMany({
+            include: {
+                session: {
+                    select: {
+                        user: {
+                            select: {
+                                username: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
-  async update(id, vendorData) {
-    const { phoneNumber, vendorName } = vendorData;
+        return vendors;
+    }
 
-    const vendor = await this.findById(id);
+    async findById(id) {
+        const vendor = await this.prisma.vendor.findUnique({
+            where: { id: Number(id) },
+            include: {
+                session: {
+                    select: {
+                        user: {
+                            select: {
+                                username: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
-    const updatedVendor = await this.prisma.vendor.update({
-      where: { id: Number(id) },
-      data: {
-        phoneNumber,
-        vendorName
-      }
-    });
+        if (!vendor) {
+            throw new AppError('Vendor not found', 404);
+        }
 
-    return updatedVendor;
-  }
+        return vendor;
+    }
 
-  async delete(id) {
-    const vendor = await this.findById(id);
+    async update(id, vendorData) {
+        const { phoneNumber, vendorName } = vendorData;
 
-    await this.prisma.vendor.delete({
-      where: { id: Number(id) }
-    });
-  }
+        const vendor = await this.findById(id);
+
+        const updatedVendor = await this.prisma.vendor.update({
+            where: { id: Number(id) },
+            data: {
+                phoneNumber,
+                vendorName
+            }
+        });
+
+        return updatedVendor;
+    }
+
+    async delete(id) {
+        const vendor = await this.findById(id);
+
+        await this.prisma.vendor.delete({
+            where: { id: Number(id) }
+        });
+    }
 }
 
+export default VendorService;
+
 ================================================================================
-Arquivo: ./src/services/sellerService.js
+Arquivo: ./src/services/sellerService.mjs
 ================================================================================
 
-// src/services/sellerService.js
-import { PrismaClient } from '@prisma/client';
-import { AppError } from '../utils/AppError.js';
+import prisma from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
 
-export class SellerService {
-  constructor() {
-    this.prisma = new PrismaClient();
-  }
+const { PrismaClient } = prisma;
 
-  async create(sellerData) {
-    const { sessionId, sellerName, product, description, image, benefits } = sellerData;
-
-    const sessionExists = await this.prisma.session.findUnique({
-      where: { sessionId }
-    });
-
-    if (!sessionExists) {
-      throw new AppError('Session not found', 404);
+class SellerService {
+    constructor() {
+        this.prisma = new PrismaClient();
     }
 
-    // Verificar se já existe um vendedor com mesmo nome na sessão
-    const existingSeller = await this.prisma.seller.findFirst({
-      where: {
-        AND: [
-          { sessionId },
-          { sellerName }
-        ]
-      }
-    });
+    async create(sellerData) {
+        const { sessionId, sellerName, product, description, image, benefits } = sellerData;
 
-    if (existingSeller) {
-      throw new AppError('Seller already exists in this session', 400);
-    }
+        const sessionExists = await this.prisma.session.findUnique({
+            where: { sessionId }
+        });
 
-    const seller = await this.prisma.seller.create({
-      data: {
-        sessionId,
-        sellerName,
-        product,
-        description,
-        image,
-        benefits
-      }
-    });
-
-    return seller;
-  }
-
-  async findAll(sessionId) {
-    const where = sessionId ? { sessionId } : {};
-
-    const sellers = await this.prisma.seller.findMany({
-      where,
-      include: {
-        session: {
-          select: {
-            user: {
-              select: {
-                username: true
-              }
-            }
-          }
+        if (!sessionExists) {
+            throw new AppError('Session not found', 404);
         }
-      }
-    });
 
-    return sellers;
-  }
-
-  async findById(id) {
-    const seller = await this.prisma.seller.findUnique({
-      where: { id: Number(id) },
-      include: {
-        session: {
-          select: {
-            user: {
-              select: {
-                username: true
-              }
+        const existingSeller = await this.prisma.seller.findFirst({
+            where: {
+                AND: [
+                    { sessionId },
+                    { sellerName }
+                ]
             }
-          }
-        }
-      }
-    });
+        });
 
-    if (!seller) {
-      throw new AppError('Seller not found', 404);
+        if (existingSeller) {
+            throw new AppError('Seller already exists in this session', 400);
+        }
+
+        const seller = await this.prisma.seller.create({
+            data: {
+                sessionId,
+                sellerName,
+                product,
+                description,
+                image,
+                benefits
+            }
+        });
+
+        return seller;
     }
 
-    return seller;
-  }
+    async findAll(sessionId) {
+        const where = sessionId ? { sessionId } : {};
 
-  async update(id, sellerData) {
-    const { product, description, image, benefits } = sellerData;
+        const sellers = await this.prisma.seller.findMany({
+            where,
+            include: {
+                session: {
+                    select: {
+                        user: {
+                            select: {
+                                username: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
-    const seller = await this.findById(id);
+        return sellers;
+    }
 
-    const updatedSeller = await this.prisma.seller.update({
-      where: { id: Number(id) },
-      data: {
-        product,
-        description,
-        image,
-        benefits
-      }
-    });
+    async findById(id) {
+        const seller = await this.prisma.seller.findUnique({
+            where: { id: Number(id) },
+            include: {
+                session: {
+                    select: {
+                        user: {
+                            select: {
+                                username: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
-    return updatedSeller;
-  }
+        if (!seller) {
+            throw new AppError('Seller not found', 404);
+        }
 
-  async delete(id) {
-    const seller = await this.findById(id);
+        return seller;
+    }
 
-    await this.prisma.seller.delete({
-      where: { id: Number(id) }
-    });
-  }
+    async update(id, sellerData) {
+        const { product, description, image, benefits } = sellerData;
+
+        const seller = await this.findById(id);
+
+        const updatedSeller = await this.prisma.seller.update({
+            where: { id: Number(id) },
+            data: {
+                product,
+                description,
+                image,
+                benefits
+            }
+        });
+
+        return updatedSeller;
+    }
+
+    async delete(id) {
+        const seller = await this.findById(id);
+
+        await this.prisma.seller.delete({
+            where: { id: Number(id) }
+        });
+    }
 }
+
+export default SellerService;
 
 
 

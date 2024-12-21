@@ -5,6 +5,12 @@ import AppError from '../utils/AppError.mjs';
 class UserController {
   constructor() {
     this.userService = new UserService();
+    // Bind all methods to preserve 'this' context
+    this.create = this.create.bind(this);
+    this.find = this.find.bind(this);
+    this.findOne = this.findOne.bind(this);
+    this.update = this.update.bind(this);
+    this.delete = this.delete.bind(this);
   }
 
   async create(req, res, next) {

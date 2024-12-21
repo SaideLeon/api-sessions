@@ -16,7 +16,7 @@ import sessionRoutes from './routes/sessionRoutes.mjs';
 import messageRoutes from './routes/messageRoutes.mjs';
 import vendorRoutes from './routes/vendorRoutes.mjs';
 import sellerRoutes from './routes/sellerRoutes.mjs';
-
+import authRoutes from './routes/authRoutes.mjs';
 // Middlewares
 import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.mjs';
 import { limiter } from './middlewares/rateLimit.mjs';
@@ -91,6 +91,7 @@ class App {
 
     // API routes
     this.app.use('/api/v1/users', userRoutes);
+    this.app.use('/api/v1/auth', authRoutes);
     this.app.use('/api/v1/sessions', sessionRoutes);
     this.app.use('/api/v1/messages', messageRoutes);
     this.app.use('/api/v1/vendors', vendorRoutes);

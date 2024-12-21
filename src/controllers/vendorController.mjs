@@ -1,7 +1,7 @@
 // src/controllers/vendorController.js
 import VendorService from '../services/vendorService.mjs';
 
-export class VendorController {
+class VendorController {
   constructor() {
     this.vendorService = new VendorService();
   }
@@ -36,3 +36,4 @@ export class VendorController {
     return res.status(204).send();
   }
 }
+export default VendorController;

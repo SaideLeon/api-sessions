@@ -1,7 +1,7 @@
 // src/controllers/sellerController.js
 import SellerService from '../services/sellerService.mjs';
 
-export class SellerController {
+class SellerController {
   constructor() {
     this.sellerService = new SellerService();
   }
@@ -37,3 +37,4 @@ export class SellerController {
     return res.status(204).send();
   }
 }
+export default SellerController;

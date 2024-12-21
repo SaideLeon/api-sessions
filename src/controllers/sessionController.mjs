@@ -1,7 +1,7 @@
 // src/controllers/sessionController.mjs
 import SessionService from '../services/sessionService.mjs';
 
-export class SessionController {
+class SessionController {
   constructor() {
     this.sessionService = new SessionService();
   }
@@ -29,3 +29,4 @@ export class SessionController {
     return res.status(204).send();
   }
 }
+export default SessionController;

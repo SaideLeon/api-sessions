@@ -1,7 +1,7 @@
 // src/controllers/messageController.js
 import MessageService from '../services/messageService.mjs';
 
-export class MessageController {
+class MessageController {
   constructor() {
     this.messageService = new MessageService();
   }
@@ -31,3 +31,4 @@ export class MessageController {
     return res.status(204).send();
   }
 }
+export default MessageController;

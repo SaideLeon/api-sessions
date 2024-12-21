@@ -7,11 +7,32 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "migrate:dev": "prisma migrate dev --name init",
-    "migrate:deploy": "prisma migrate deploy",
-    "generate:prisma": "prisma generate",
-    "reset:db": "prisma migrate reset --force --skip-generate",
-    "test": "jest"
+    "build": "npm run db:prod:deploy",
+    
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "db:reset": "prisma migrate reset --force --skip-generate",
+    "db:status": "prisma migrate status",
+    "db:studio": "prisma studio",
+    
+    "prisma:generate": "prisma generate",
+    "prisma:format": "prisma format",
+    "prisma:validate": "prisma validate",
+    
+    "db:dev:setup": "npm run prisma:generate && npm run db:migrate",
+    "db:prod:deploy": "npm run prisma:generate && npm run db:migrate:prod",
+    
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    
+    "clean": "rm -rf node_modules",
+    "clean:full": "rm -rf node_modules && rm -rf dist && rm -rf coverage",
+    "reinstall": "npm run clean && npm install",
+    
+    "check": "npm run prisma:validate && npm run test"
   },
   "dependencies": {
     "@prisma/client": "^5.8.1",
@@ -43,7 +64,15 @@
     "testEnvironment": "node",
     "collectCoverage": true,
     "coverageDirectory": "./coverage",
-    "coverageReporters": ["json", "lcov", "text", "clover"]
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "text",
+      "clover"
+    ]
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   }
 }
 

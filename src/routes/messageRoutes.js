@@ -1,6 +1,6 @@
 // src/routes/messageRoutes.js
 import { Router } from 'express';
-import { MessageController } from '../controllers/messageController.mjs';
+import MessageController from '../controllers/messageController.mjs';
 import { authenticate } from '../middlewares/auth.mjs';
 import { validate, schemas } from '../middlewares/validate.mjs';
 

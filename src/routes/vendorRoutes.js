@@ -1,8 +1,8 @@
 // src/routes/vendorRoutes.js
 import { Router } from 'express';
 import VendorController from '../controllers/vendorController.mjs';
-import { authenticate } from '../middlewares/auth.js';
-import { validate, schemas } from '../middlewares/validate.js';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
 
 const router = Router();
 const vendorController = new VendorController();

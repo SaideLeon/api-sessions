@@ -1,4 +1,4 @@
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 export const errorHandler = (err, req, res, next) => {
     err.statusCode = err.statusCode || 500;

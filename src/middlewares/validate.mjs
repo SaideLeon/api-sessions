@@ -1,5 +1,5 @@
 import { object, string } from 'yup';
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 export const validate = (schema) => async (req, res, next) => {
     try {

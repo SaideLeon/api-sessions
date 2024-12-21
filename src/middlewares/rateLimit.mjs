@@ -1,5 +1,5 @@
 import rateLimit from 'express-rate-limit';
-import { AppError } from '../utils/AppError.js';
+import AppError from '../utils/AppError.mjs';
 
 export const limiter = rateLimit({
     max: 100, // limite de 100 requisições

@@ -1,4 +1,4 @@
-/ utils/hashPassword.mjs
+// utils/hashPassword.mjs
 import bcrypt from 'bcrypt';
 import { config } from 'dotenv';
 config();

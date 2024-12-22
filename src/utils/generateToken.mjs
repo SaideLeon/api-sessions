@@ -1,11 +1,12 @@
 // utils/generateToken.mjs
 import jwt from 'jsonwebtoken';
-import env from '../config/env.mjs';
+import { config } from 'dotenv';
+config();
 
 export const generateToken = (userId) => {
   return jwt.sign(
     { id: userId },
-    env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN }
+    process.env.JWT_SECRET || "segredo",
+    { expiresIn: process.env.JWT_EXPIRES_IN || '24h'}
   );
 };

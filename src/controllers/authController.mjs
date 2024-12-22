@@ -1,7 +1,7 @@
 // controllers/authController.mjs
 import { PrismaClient } from '@prisma/client';
 import AppError from '../utils/AppError.mjs';
-import { generateToken } from '../utils/generateToken.js';
+import { generateToken } from '../utils/generateToken.mjs';
 import { comparePasswords } from '../utils/hashPassword.js';
 
 const prisma = new PrismaClient();

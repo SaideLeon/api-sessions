@@ -295,6 +295,910 @@ class UserController {
 export default UserController;
 
 ================================================================================
+Arquivo: ./src/controllers/sessionController.mjs
+================================================================================
+
+// src/controllers/sessionController.mjs
+import { PrismaClient } from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
+import { v4 as uuidv4 } from 'uuid';
+
+class SessionController {
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+
+  async create(req, res, next) {
+    try {
+      const { userId, title, type = 'regular' } = req.body;
+
+      // Gerar um ID único para a sessão
+      const sessionId = uuidv4();
+
+      // Verificar se o usuário existe
+      const user = await this.prisma.user.findUnique({
+        where: { id: Number(userId) }
+      });
+
+      if (!user) {
+        throw new AppError('User not found', 404);
+      }
+
+      // Criar a sessão
+      const session = await this.prisma.session.create({
+        data: {
+          sessionId,
+          title,
+          type,
+          status: 'active',
+          userId: Number(userId)
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      return res.status(201).json({
+        status: 'success',
+        message: 'Session created successfully',
+        data: session
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findAll(req, res, next) {
+    try {
+      const sessions = await this.prisma.session.findMany({
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          },
+          messages: true
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: sessions
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findOne(req, res, next) {
+    try {
+      const { sessionId } = req.params;
+
+      const session = await this.prisma.session.findUnique({
+        where: { sessionId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          },
+          messages: true
+        }
+      });
+
+      if (!session) {
+        throw new AppError('Session not found', 404);
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        data: session
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async update(req, res, next) {
+    try {
+      const { sessionId } = req.params;
+      const { title, status } = req.body;
+
+      const session = await this.prisma.session.update({
+        where: { sessionId },
+        data: {
+          title,
+          status
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Session updated successfully',
+        data: session
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req, res, next) {
+    try {
+      const { sessionId } = req.params;
+
+      await this.prisma.session.delete({
+        where: { sessionId }
+      });
+
+      return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+
+export default SessionController;
+
+
+
+================================================================================
+Arquivo: ./src/controllers/sellerController.mjs
+================================================================================
+
+// src/controllers/sellerController.mjs
+import { PrismaClient } from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
+
+class SellerController {
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+
+  async create(req, res, next) {
+    try {
+      const { sessionId, sellerName, product, description, benefits, image } = req.body;
+
+      // Verificar se a sessão existe
+      const session = await this.prisma.session.findUnique({
+        where: { sessionId }
+      });
+
+      if (!session) {
+        throw new AppError('Session not found', 404);
+      }
+
+      // Verificar se já existe um vendedor com o mesmo nome na sessão
+      const existingSeller = await this.prisma.seller.findUnique({
+        where: {
+          sessionId_sellerName: {
+            sessionId,
+            sellerName
+          }
+        }
+      });
+
+      if (existingSeller) {
+        throw new AppError('Seller already exists in this session', 400);
+      }
+
+      // Criar o vendedor
+      const seller = await this.prisma.seller.create({
+        data: {
+          sessionId,
+          sellerName,
+          product,
+          description,
+          benefits,
+          image
+        },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              type: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      return res.status(201).json({
+        status: 'success',
+        message: 'Seller created successfully',
+        data: seller
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findAll(req, res, next) {
+    try {
+      const { sessionId } = req.query;
+      
+      let whereClause = {};
+      if (sessionId) {
+        whereClause.sessionId = sessionId;
+      }
+
+      const sellers = await this.prisma.seller.findMany({
+        where: whereClause,
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              type: true,
+              status: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        results: sellers.length,
+        data: sellers
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findOne(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      const seller = await this.prisma.seller.findUnique({
+        where: { id: Number(id) },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              type: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      if (!seller) {
+        throw new AppError('Seller not found', 404);
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        data: seller
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async update(req, res, next) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      // Verificar se o vendedor existe
+      const existingSeller = await this.prisma.seller.findUnique({
+        where: { id: Number(id) }
+      });
+
+      if (!existingSeller) {
+        throw new AppError('Seller not found', 404);
+      }
+
+      // Atualizar o vendedor
+      const seller = await this.prisma.seller.update({
+        where: { id: Number(id) },
+        data: updateData,
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              type: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Seller updated successfully',
+        data: seller
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      // Verificar se o vendedor existe
+      const seller = await this.prisma.seller.findUnique({
+        where: { id: Number(id) }
+      });
+
+      if (!seller) {
+        throw new AppError('Seller not found', 404);
+      }
+
+      // Deletar o vendedor
+      await this.prisma.seller.delete({
+        where: { id: Number(id) }
+      });
+
+      return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Método adicional para buscar vendedores por sessão
+  async findBySession(req, res, next) {
+    try {
+      const { sessionId } = req.params;
+
+      // Verificar se a sessão existe
+      const session = await this.prisma.session.findUnique({
+        where: { sessionId }
+      });
+
+      if (!session) {
+        throw new AppError('Session not found', 404);
+      }
+
+      const sellers = await this.prisma.seller.findMany({
+        where: { sessionId },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              type: true,
+              status: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        results: sellers.length,
+        data: sellers
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+
+export default SellerController;
+
+// src/routes/sellerRoutes.mjs
+import { Router } from 'express';
+import SellerController from '../controllers/sellerController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+
+const router = Router();
+const sellerController = new SellerController();
+
+router
+  .route('/')
+  .post(
+    authenticate,
+    validate(schemas.seller.create),
+    sellerController.create.bind(sellerController)
+  )
+  .get(
+    authenticate,
+    sellerController.findAll.bind(sellerController)
+  );
+
+router
+  .route('/:id')
+  .get(
+    authenticate,
+    sellerController.findOne.bind(sellerController)
+  )
+  .put(
+    authenticate,
+    sellerController.update.bind(sellerController)
+  )
+  .delete(
+    authenticate,
+    sellerController.delete.bind(sellerController)
+  );
+
+// Rota adicional para buscar vendedores por sessão
+router.get(
+  '/session/:sessionId',
+  authenticate,
+  sellerController.findBySession.bind(sellerController)
+);
+
+export default router;
+
+================================================================================
+Arquivo: ./src/controllers/vendorController.mjs
+================================================================================
+
+// src/controllers/vendorController.mjs
+import { PrismaClient } from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
+
+class VendorController {
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+
+  async create(req, res, next) {
+    try {
+      const { sessionId, phoneNumber, vendorName } = req.body;
+
+      // Verificar se a sessão existe
+      const session = await this.prisma.session.findUnique({
+        where: { sessionId }
+      });
+
+      if (!session) {
+        throw new AppError('Session not found', 404);
+      }
+
+      // Verificar se já existe um vendor para esta sessão
+      const existingVendor = await this.prisma.vendor.findUnique({
+        where: { sessionId }
+      });
+
+      if (existingVendor) {
+        throw new AppError('A vendor already exists for this session', 400);
+      }
+
+      const vendor = await this.prisma.vendor.create({
+        data: {
+          sessionId,
+          phoneNumber,
+          vendorName
+        },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      return res.status(201).json({
+        status: 'success',
+        message: 'Vendor created successfully',
+        data: vendor
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findAll(req, res, next) {
+    try {
+      const vendors = await this.prisma.vendor.findMany({
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        results: vendors.length,
+        data: vendors
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findOne(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      const vendor = await this.prisma.vendor.findUnique({
+        where: { id: Number(id) },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      if (!vendor) {
+        throw new AppError('Vendor not found', 404);
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        data: vendor
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async update(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { vendorName, phoneNumber } = req.body;
+
+      const vendor = await this.prisma.vendor.update({
+        where: { id: Number(id) },
+        data: {
+          vendorName,
+          phoneNumber
+        },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Vendor updated successfully',
+        data: vendor
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      await this.prisma.vendor.delete({
+        where: { id: Number(id) }
+      });
+
+      return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+export default VendorController;
+
+
+
+
+================================================================================
+Arquivo: ./src/controllers/messageController.mjs
+================================================================================
+
+// src/controllers/messageController.mjs
+import { PrismaClient } from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
+
+class MessageController {
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+
+  async create(req, res, next) {
+    try {
+      const { sessionId, sender, content, phoneNumber, mediaUrl } = req.body;
+
+      // Verificar se a sessão existe
+      const session = await this.prisma.session.findUnique({
+        where: { sessionId }
+      });
+
+      if (!session) {
+        throw new AppError('Session not found', 404);
+      }
+
+      const message = await this.prisma.message.create({
+        data: {
+          sessionId,
+          sender,
+          content,
+          phoneNumber,
+          mediaUrl
+        },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      return res.status(201).json({
+        status: 'success',
+        message: 'Message created successfully',
+        data: message
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findAll(req, res, next) {
+    try {
+      const { sessionId } = req.query;
+      
+      const whereClause = sessionId ? { sessionId } : {};
+
+      const messages = await this.prisma.message.findMany({
+        where: whereClause,
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'asc'
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        results: messages.length,
+        data: messages
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async findOne(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      const message = await this.prisma.message.findUnique({
+        where: { id: Number(id) },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      if (!message) {
+        throw new AppError('Message not found', 404);
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        data: message
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getBatchMessages(req, res, next) {
+    try {
+      const { sessionId } = req.params;
+      const { lastMessageId, limit = 50 } = req.query;
+
+      const whereClause = {
+        sessionId,
+        ...(lastMessageId && { id: { gt: parseInt(lastMessageId) } })
+      };
+
+      const messages = await this.prisma.message.findMany({
+        where: whereClause,
+        take: parseInt(limit),
+        orderBy: {
+          createdAt: 'asc'
+        },
+        include: {
+          session: {
+            select: {
+              sessionId: true,
+              title: true,
+              status: true
+            }
+          }
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        results: messages.length,
+        data: messages
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async delete(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      await this.prisma.message.delete({
+        where: { id: Number(id) }
+      });
+
+      return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+export default MessageController;
+
+================================================================================
+Arquivo: ./src/controllers/authController.mjs
+================================================================================
+
+// controllers/authController.mjs
+import { PrismaClient } from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
+import { generateToken } from '../utils/generateToken.mjs';
+import { comparePasswords } from '../utils/hashPassword.mjs';
+
+class AuthController {
+  constructor() {
+    this.prisma = new PrismaClient();
+    this.login = this.login.bind(this);
+    this.logout = this.logout.bind(this);
+    this.refreshToken = this.refreshToken.bind(this);
+  }
+
+  async login(req, res, next) {
+    try {
+      const { email, password } = req.body;
+
+      // 1. Verificar se usuário existe
+      const user = await this.prisma.user.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          username: true,
+          phoneNumber: true
+        }
+      });
+
+      if (!user) {
+        throw new AppError('Invalid email or password', 401);
+      }
+
+      // 2. Verificar senha
+      const isPasswordValid = await comparePasswords(password, user.password);
+      if (!isPasswordValid) {
+        throw new AppError('Invalid email or password', 401);
+      }
+
+      // 3. Gerar token
+      const token = generateToken(user.id);
+
+      // 4. Remover senha do objeto de resposta
+      const { password: _, ...userWithoutPassword } = user;
+
+      // 5. Criar sessão de login
+      await this.prisma.loginSession.create({
+        data: {
+          userId: user.id,
+          token,
+          userAgent: req.headers['user-agent'] || 'unknown',
+          ipAddress: req.ip
+        }
+      });
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          user: userWithoutPassword,
+          token
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async logout(req, res, next) {
+    try {
+      const { token } = req;
+
+      await this.prisma.loginSession.update({
+        where: { token },
+        data: { isValid: false }
+      });
+
+      res.status(204).json({
+        status: 'success',
+        data: null
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async refreshToken(req, res, next) {
+    try {
+      const { user } = req;
+      const newToken = generateToken(user.id);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          token: newToken
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+}
+
+export default AuthController;
+
+================================================================================
 Arquivo: ./src/middlewares/auth.mjs
 ================================================================================
 
@@ -555,6 +1459,176 @@ export const authLimiter = rateLimit({
 });
 
 ================================================================================
+Arquivo: ./src/routes/sessionRoutes.mjs
+================================================================================
+
+// src/routes/sessionRoutes.mjs
+import { Router } from 'express';
+import SessionController from '../controllers/sessionController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+
+const router = Router();
+const sessionController = new SessionController();
+
+router
+  .route('/')
+  .post(
+    authenticate,
+    validate(schemas.session.create),
+    sessionController.create.bind(sessionController)
+  )
+  .get(
+    authenticate,
+    sessionController.findAll.bind(sessionController)
+  );
+
+router
+  .route('/:sessionId')
+  .get(
+    authenticate,
+    sessionController.findOne.bind(sessionController)
+  )
+  .put(
+    authenticate,
+    validate(schemas.session.update),
+    sessionController.update.bind(sessionController)
+  )
+  .delete(
+    authenticate,
+    sessionController.delete.bind(sessionController)
+  );
+
+export default router;
+
+================================================================================
+Arquivo: ./src/routes/sellerRoutes.mjs
+================================================================================
+
+// src/routes/sellerRoutes.mjs
+import { Router } from 'express';
+import SellerController from '../controllers/sellerController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+
+const router = Router();
+const sellerController = new SellerController();
+
+router
+  .route('/')
+  .post(
+    authenticate,
+    validate(schemas.seller.create),
+    sellerController.create.bind(sellerController)
+  )
+  .get(
+    authenticate,
+    sellerController.findAll.bind(sellerController)
+  );
+
+router
+  .route('/:id')
+  .get(
+    authenticate,
+    sellerController.findOne.bind(sellerController)
+  )
+  .put(
+    authenticate,
+    sellerController.update.bind(sellerController)
+  )
+  .delete(
+    authenticate,
+    sellerController.delete.bind(sellerController)
+  );
+
+// Rota adicional para buscar vendedores por sessão
+router.get(
+  '/session/:sessionId',
+  authenticate,
+  sellerController.findBySession.bind(sellerController)
+);
+
+export default router;
+
+================================================================================
+Arquivo: ./src/routes/vendorRoutes.mjs
+================================================================================
+
+// src/routes/vendorRoutes.mjs
+import { Router } from 'express';
+import VendorController from '../controllers/vendorController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+
+const router = Router();
+const vendorController = new VendorController();
+
+router
+  .route('/')
+  .post(
+    authenticate,
+    validate(schemas.vendor.create),
+    vendorController.create.bind(vendorController)
+  )
+  .get(
+    authenticate,
+    vendorController.findAll.bind(vendorController)
+  );
+
+router
+  .route('/:id')
+  .get(
+    authenticate,
+    vendorController.findOne.bind(vendorController)
+  )
+  .put(
+    authenticate,
+    vendorController.update.bind(vendorController)
+  )
+  .delete(
+    authenticate,
+    vendorController.delete.bind(vendorController)
+  );
+
+export default router;
+
+================================================================================
+Arquivo: ./src/routes/authRoutes.mjs
+================================================================================
+
+// routes/authRoutes.mjs
+import { Router } from 'express';
+import AuthController from '../controllers/authController.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { authLimiter } from '../middlewares/rateLimit.mjs';
+
+const router = Router();
+const authController = new AuthController();
+
+router.post(
+  '/login',
+  authLimiter,
+  validate(schemas.auth.login),
+  authController.login
+);
+
+router.post(
+  '/logout',
+  authenticate,
+  authController.logout
+);
+
+router.post(
+  '/refresh-token',
+  authenticate,
+  authController.refreshToken
+);
+
+export default router;
+
+
+================================================================================
 Arquivo: ./src/routes/userRoutes.mjs
 ================================================================================
 
@@ -598,6 +1672,51 @@ router
 
 export default router;
 
+
+================================================================================
+Arquivo: ./src/routes/messageRoutes.mjs
+================================================================================
+
+// src/routes/messageRoutes.mjs
+import { Router } from 'express';
+import MessageController from '../controllers/messageController.mjs';
+import { authenticate } from '../middlewares/auth.mjs';
+import { validate, schemas } from '../middlewares/validate.mjs';
+
+const router = Router();
+const messageController = new MessageController();
+
+router
+  .route('/')
+  .post(
+    authenticate,
+    validate(schemas.message.create),
+    messageController.create.bind(messageController)
+  )
+  .get(
+    authenticate,
+    messageController.findAll.bind(messageController)
+  );
+
+router
+  .route('/:id')
+  .get(
+    authenticate,
+    messageController.findOne.bind(messageController)
+  )
+  .delete(
+    authenticate,
+    messageController.delete.bind(messageController)
+  );
+
+// Rota para buscar mensagens em lote de uma sessão específica
+router.get(
+  '/batch/:sessionId',
+  authenticate,
+  messageController.getBatchMessages.bind(messageController)
+);
+
+export default router;
 
 ================================================================================
 Arquivo: ./src/utils/hashPassword.mjs

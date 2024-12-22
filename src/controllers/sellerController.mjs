@@ -138,7 +138,6 @@ class SellerController {
       const { id } = req.params;
       const updateData = req.body;
 
-      // Verificar se o vendedor existe
       const existingSeller = await this.prisma.seller.findUnique({
         where: { id: Number(id) }
       });
@@ -147,7 +146,6 @@ class SellerController {
         throw new AppError('Seller not found', 404);
       }
 
-      // Atualizar o vendedor
       const seller = await this.prisma.seller.update({
         where: { id: Number(id) },
         data: updateData,
@@ -177,7 +175,6 @@ class SellerController {
     try {
       const { id } = req.params;
 
-      // Verificar se o vendedor existe
       const seller = await this.prisma.seller.findUnique({
         where: { id: Number(id) }
       });
@@ -186,7 +183,6 @@ class SellerController {
         throw new AppError('Seller not found', 404);
       }
 
-      // Deletar o vendedor
       await this.prisma.seller.delete({
         where: { id: Number(id) }
       });
@@ -197,12 +193,10 @@ class SellerController {
     }
   }
 
-  // Método adicional para buscar vendedores por sessão
   async findBySession(req, res, next) {
     try {
       const { sessionId } = req.params;
 
-      // Verificar se a sessão existe
       const session = await this.prisma.session.findUnique({
         where: { sessionId }
       });
@@ -240,48 +234,3 @@ class SellerController {
 }
 
 export default SellerController;
-
-// src/routes/sellerRoutes.mjs
-import { Router } from 'express';
-import SellerController from '../controllers/sellerController.mjs';
-import { authenticate } from '../middlewares/auth.mjs';
-import { validate, schemas } from '../middlewares/validate.mjs';
-
-const router = Router();
-const sellerController = new SellerController();
-
-router
-  .route('/')
-  .post(
-    authenticate,
-    validate(schemas.seller.create),
-    sellerController.create.bind(sellerController)
-  )
-  .get(
-    authenticate,
-    sellerController.findAll.bind(sellerController)
-  );
-
-router
-  .route('/:id')
-  .get(
-    authenticate,
-    sellerController.findOne.bind(sellerController)
-  )
-  .put(
-    authenticate,
-    sellerController.update.bind(sellerController)
-  )
-  .delete(
-    authenticate,
-    sellerController.delete.bind(sellerController)
-  );
-
-// Rota adicional para buscar vendedores por sessão
-router.get(
-  '/session/:sessionId',
-  authenticate,
-  sellerController.findBySession.bind(sellerController)
-);
-
-export default router;

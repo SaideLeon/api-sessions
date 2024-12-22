@@ -1,350 +1,175 @@
-# Documentação da API
+# Backend Architecture Documentation
 
-## URL Base
+## Overview
+This is a Node.js/Express backend application using Prisma ORM with PostgreSQL database. The architecture follows a clean, layered pattern with clear separation of concerns.
+
+## Core Architecture Components
+
+### 1. Application Structure
+```
+src/
+├── controllers/    # Request handlers
+├── services/      # Business logic
+├── routes/        # API route definitions
+├── middlewares/   # Express middlewares
+├── utils/         # Helper utilities
+├── config/        # Configuration files
+└── server.js      # Application entry point
+```
+
+### 2. Key Technologies
+- **Framework**: Express.js
+- **Database**: PostgreSQL
+- **ORM**: Prisma
+- **Authentication**: JWT
+- **Validation**: Yup schema validation
+- **Security**: helmet, cors, rate limiting
+
+### 3. Database Schema
+
+The database consists of 6 main entities:
+- User
+- LoginSession
+- Session
+- Message
+- Vendor
+- Seller
+
+Key relationships:
+- User -> Sessions (1:M)
+- Session -> Messages (1:M)
+- Session -> Vendor (1:1)
+- Session -> Sellers (1:M)
+
+### 4. API Structure
+
+The API follows RESTful conventions with these main endpoints:
 
 ```
-http://localhost:8080/api/v1
+/api/v1/
+├── auth/          # Authentication routes
+├── users/         # User management
+├── sessions/      # Chat sessions
+├── messages/      # Message handling
+├── vendors/       # Vendor management
+└── sellers/       # Seller management
 ```
 
----
+## Security Features
 
-## Autenticação
+1. **Authentication & Authorization**
+   - JWT-based authentication
+   - Role-based access control
+   - Session management with login tracking
 
-A maioria dos endpoints requer autenticação via token Bearer no cabeçalho de autorização:
+2. **Security Measures**
+   - Rate limiting for API endpoints
+   - CORS protection
+   - HTTP security headers (via helmet)
+   - Request size limiting
+   - Password hashing with bcrypt
 
+3. **Error Handling**
+   - Global error handling middleware
+   - Custom AppError class
+   - Development/Production error responses
+
+## Key Features
+
+### 1. Authentication System
+- Login/Logout functionality
+- Token refresh mechanism
+- Session tracking with device info
+
+### 2. Session Management
+- Unique session IDs using UUID
+- Relationship tracking between users, messages, and vendors
+- Title management for sessions
+
+### 3. Message Handling
+- Support for text and media messages
+- Chronological message ordering
+- Session-based message grouping
+
+### 4. Vendor & Seller Management
+- Vendor registration per session
+- Seller product management
+- Unique constraints for business rules
+
+## Best Practices Implemented
+
+1. **Code Organization**
+   - Service layer pattern
+   - Controller-Service separation
+   - Route modularization
+
+2. **Error Handling**
+   - Async/await error catching
+   - Validation error handling
+   - Custom error classes
+
+3. **Security**
+   - Input validation
+   - Rate limiting
+   - Secure headers
+   - Password hashing
+
+4. **Performance**
+   - Response compression
+   - Database connection pooling
+   - Efficient queries with Prisma
+
+## Environment Configuration
+
+Key environment variables required:
 ```
-Authorization: Bearer <token>
+DATABASE_URL=postgresql://...
+JWT_SECRET=your-secret-key
+JWT_EXPIRES_IN=24h
+NODE_ENV=development/production
+PORT=3000
+CORS_ORIGIN=*
+RATE_LIMIT_WINDOW=900000
+RATE_LIMIT_MAX=100
+BCRYPT_ROUNDS=10
 ```
 
----
-
-## Endpoints
-
-### Usuários
-
-#### **Criar Usuário**
-
-**POST** `/users`
-
-**Descrição:** Registra um novo usuário.
-
-**Body**:
-
+## API Response Format
 ```json
 {
-  "username": "string",
-  "email": "string",
-  "password": "string",
-  "phoneNumber": "string"
+  "status": "success/error",
+  "message": "Operation result message",
+  "data": {
+    // Response data
+  }
 }
 ```
 
-**Resposta (201):**
-
-```json
-{
-  "id": "number",
-  "username": "string",
-  "email": "string",
-  "phoneNumber": "string",
-  "createdAt": "string"
-}
-```
-
----
-
-#### **Obter Perfil do Usuário**
-
-**GET** `/users/me`
-
-**Descrição:** Retorna o perfil do usuário atual.
-
-**Autenticação:** Obrigatória.
-
-**Resposta (200):**
-
-```json
-{
-  "id": "number",
-  "username": "string",
-  "email": "string",
-  "phoneNumber": "string",
-  "createdAt": "string"
-}
-```
-
----
-
-### Sessões
-
-#### **Criar Sessão**
-
-**POST** `/sessions`
-
-**Descrição:** Cria uma nova sessão.
-
-**Autenticação:** Obrigatória.
-
-**Resposta (201):**
-
-```json
-{
-  "id": "number",
-  "sessionId": "string",
-  "userId": "number",
-  "createdAt": "string"
-}
-```
-
----
-
-#### **Obter Detalhes da Sessão**
-
-**GET** `/sessions/:sessionId`
-
-**Descrição:** Retorna os detalhes de uma sessão.
-
-**Autenticação:** Obrigatória.
-
-**Parâmetros:**
-
-- `sessionId`: Identificador da sessão.
-
-**Resposta (200):**
-
-```json
-{
-  "id": "number",
-  "sessionId": "string",
-  "userId": "number",
-  "createdAt": "string",
-  "messages": [],
-  "vendors": [],
-  "sellers": []
-}
-```
-
----
-
-### Mensagens
-
-#### **Enviar Mensagem**
-
-**POST** `/messages`
-
-**Descrição:** Envia uma nova mensagem em uma sessão.
-
-**Autenticação:** Obrigatória.
-
-**Body**:
-
-```json
-{
-  "sessionId": "string",
-  "content": "string",
-  "sender": "string",
-  "phoneNumber": "string",
-  "mediaUrl": "string (opcional)"
-}
-```
-
-**Resposta (201):**
-
-```json
-{
-  "id": "number",
-  "sessionId": "string",
-  "content": "string",
-  "sender": "string",
-  "phoneNumber": "string",
-  "mediaUrl": "string",
-  "createdAt": "string"
-}
-```
-
----
-
-#### **Obter Mensagens da Sessão**
-
-**GET** `/messages/:sessionId`
-
-**Descrição:** Retorna todas as mensagens de uma sessão.
-
-**Autenticação:** Obrigatória.
-
-**Parâmetros:**
-
-- `sessionId`: Identificador da sessão.
-
-**Resposta (200):**
-
-```json
-{
-  "messages": [
-    {
-      "id": "number",
-      "sessionId": "string",
-      "content": "string",
-      "sender": "string",
-      "phoneNumber": "string",
-      "mediaUrl": "string",
-      "createdAt": "string"
-    }
-  ]
-}
-```
-
----
-
-### Fornecedores
-
-#### **Registrar Fornecedor**
-
-**POST** `/vendors`
-
-**Descrição:** Registra um novo fornecedor.
-
-**Autenticação:** Obrigatória.
-
-**Body**:
-
-```json
-{
-  "sessionId": "string",
-  "phoneNumber": "string",
-  "vendorName": "string"
-}
-```
-
-**Resposta (201):**
-
-```json
-{
-  "id": "number",
-  "sessionId": "string",
-  "phoneNumber": "string",
-  "vendorName": "string",
-  "createdAt": "string"
-}
-```
-
----
-
-#### **Obter Detalhes do Fornecedor**
-
-**GET** `/vendors/:sessionId`
-
-**Descrição:** Retorna os detalhes de um fornecedor associado a uma sessão.
-
-**Autenticação:** Obrigatória.
-
-**Parâmetros:**
-
-- `sessionId`: Identificador da sessão.
-
-**Resposta (200):**
-
-```json
-{
-  "id": "number",
-  "sessionId": "string",
-  "phoneNumber": "string",
-  "vendorName": "string",
-  "createdAt": "string"
-}
-```
-
----
-
-### Vendedores
-
-#### **Criar Vendedor**
-
-**POST** `/sellers`
-
-**Descrição:** Registra um novo vendedor com um produto.
-
-**Autenticação:** Obrigatória.
-
-**Body**:
-
-```json
-{
-  "sessionId": "string",
-  "sellerName": "string",
-  "product": "string",
-  "description": "string",
-  "image": "string (opcional)",
-  "benefits": "string"
-}
-```
-
-**Resposta (201):**
-
-```json
-{
-  "id": "number",
-  "sessionId": "string",
-  "sellerName": "string",
-  "product": "string",
-  "description": "string",
-  "image": "string",
-  "benefits": "string",
-  "createdAt": "string"
-}
-```
-
----
-
-#### **Obter Vendedores da Sessão**
-
-**GET** `/sellers/:sessionId`
-
-**Descrição:** Retorna todos os vendedores em uma sessão.
-
-**Autenticação:** Obrigatória.
-
-**Parâmetros:**
-
-- `sessionId`: Identificador da sessão.
-
-**Resposta (200):**
-
-```json
-{
-  "sellers": [
-    {
-      "id": "number",
-      "sessionId": "string",
-      "sellerName": "string",
-      "product": "string",
-      "description": "string",
-      "image": "string",
-      "benefits": "string",
-      "createdAt": "string"
-    }
-  ]
-}
-```
-
----
-
-### Respostas de Erro
-
-| Código | Mensagem                       |
-|--------|--------------------------------|
-| 400    | Requisição Inválida            |
-| 401    | Não Autorizado                 |
-| 403    | Proibido                       |
-| 404    | Não Encontrado                 |
-| 429    | Muitas Requisições             |
-| 500    | Erro Interno no Servidor       |
-
-**Exemplo de resposta de erro:**
-
-```json
-{
-  "status": "error",
-  "message": "Mensagem descritiva do erro"
-}
-```
+## Monitoring & Logging
+
+1. **Error Tracking**
+   - Uncaught exception handling
+   - Unhandled promise rejection catching
+   - Request timestamp tracking
+
+2. **Logging**
+   - Morgan for HTTP request logging
+   - Development/Production log formats
+   - Error stack traces in development
+
+## Deployment Considerations
+
+1. **Process Management**
+   - Graceful shutdown handling
+   - SIGTERM signal handling
+   - Database connection management
+
+2. **Security**
+   - Environment-based error responses
+   - Secure headers in production
+   - Rate limiting configuration
+
+3. **Performance**
+   - Response compression
+   - Static file serving
+   - Error handling optimization

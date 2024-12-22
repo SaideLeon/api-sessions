@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { config } from 'dotenv';
 config();
 
-const saltRounds = parseInt(process.env.BCRYPT_ROUNDS) || 10;
+const saltRounds = parseInt(process.env.BCRYPT_ROUNDS);
 
 export const hashPassword = async (password) => {
   return bcrypt.hash(password, saltRounds);

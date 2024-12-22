@@ -1,48 +1,52 @@
-import prisma from '@prisma/client';
+// src/services/sessionService.mjs
+import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import AppError from '../utils/AppError.mjs';
-
-const { PrismaClient } = prisma;
 
 class SessionService {
     constructor() {
         this.prisma = new PrismaClient();
-        console.log('SessionService initialized');
+        console.log('SessionService initialized with Prisma client');
     }
 
     async create(userId, title = null) {
         console.log(`Attempting to create session for userId: ${userId}, title: ${title}`);
 
-        const userExists = await this.prisma.user.findUnique({
-            where: { id: Number(userId) }
-        });
+        try {
+            const userExists = await this.prisma.user.findUnique({
+                where: { id: Number(userId) }
+            });
 
-        if (!userExists) {
-            console.error(`User not found for userId: ${userId}`);
-            throw new AppError('User not found', 404);
-        }
+            if (!userExists) {
+                console.error(`User not found for userId: ${userId}`);
+                throw new AppError('User not found', 404);
+            }
 
-        const defaultTitle = title || `Sessão de ${new Date().toLocaleDateString('pt-BR')}`;
-        console.log(`Default title generated: ${defaultTitle}`);
+            const defaultTitle = title || `Sessão de ${new Date().toLocaleDateString('pt-BR')}`;
+            console.log(`Default title generated: ${defaultTitle}`);
 
-        const session = await this.prisma.session.create({
-            data: {
-                sessionId: uuidv4(),
-                title: defaultTitle,
-                userId: Number(userId)
-            },
-            include: {
-                user: {
-                    select: {
-                        username: true,
-                        email: true
+            const session = await this.prisma.session.create({
+                data: {
+                    sessionId: uuidv4(),
+                    title: defaultTitle,
+                    userId: Number(userId)
+                },
+                include: {
+                    user: {
+                        select: {
+                            username: true,
+                            email: true
+                        }
                     }
                 }
-            }
-        });
+            });
 
-        console.log(`Session created successfully: ${JSON.stringify(session)}`);
-        return session;
+            console.log(`Session created successfully: ${JSON.stringify(session)}`);
+            return session;
+        } catch (error) {
+            console.error('Error in session creation:', error);
+            throw new AppError(error.message || 'Error creating session', 500);
+        }
     }
 
     async findAll() {

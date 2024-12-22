@@ -29,11 +29,12 @@ model LoginSession {
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-
 model Session {
   id        Int       @id @default(autoincrement())
   sessionId String    @unique
   title     String?
+  type      String?   @default("regular")
+  status    String?   @default("active")
   userId    Int
   createdAt DateTime  @default(now())
   messages  Message[]
@@ -41,6 +42,7 @@ model Session {
   user      User      @relation(fields: [userId], references: [id])
   vendors   Vendor[]
 }
+
 
 model Message {
   id          Int      @id @default(autoincrement())

@@ -2,7 +2,7 @@ import prisma from '@prisma/client';
 import bcrypt from 'bcrypt';
 import AppError from '../utils/AppError.mjs';
 
-c
+import { PrismaClient } from '@prisma/client';
 
 class UserService {
     constructor() {

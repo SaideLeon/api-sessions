@@ -10,7 +10,7 @@
     "build": "npm run db:init && npm run db:prod:deploy",
     
     "db:clean": "rm -rf prisma/migrations && npm run db:reset",
-    "db:init": "prisma migrate dev --name init --skip-seed",
+    "db:init": "npm run db:clean && prisma migrate dev --name init --skip-seed",
     "db:migrate": "prisma migrate dev",
     "db:migrate:prod": "prisma migrate deploy",
     "db:push": "prisma db push",
@@ -73,6 +73,5 @@
     ]
   }
 }
-
 
 

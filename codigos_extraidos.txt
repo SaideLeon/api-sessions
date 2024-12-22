@@ -620,7 +620,7 @@ Arquivo: ./src/middlewares/auth.mjs
 ================================================================================
 
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+#fffffff8
 import AppError from '../utils/AppError.mjs';
 
 const prisma = new PrismaClient();

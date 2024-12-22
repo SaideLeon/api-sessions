@@ -1,9 +1,13 @@
 // src/controllers/sessionController.mjs
 import SessionService from '../services/sessionService.mjs';
+import { PrismaClient } from '@prisma/client';
 
 class SessionController {
+  const prismaClient = new PrismaClient();
+    const newSessionService = new SessionService();
+
     constructor() {
-        this.sessionService = new SessionService();
+      this.sessionService = newSessionService(prismaClient);
     }
 
     async create(req, res) {

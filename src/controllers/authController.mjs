@@ -1,11 +1,3 @@
-// controllers/authController.mjs
-import { PrismaClient } from '@prisma/client';
-import AppError from '../utils/AppError.mjs';
-import { generateToken } from '../utils/generateToken.mjs';
-import comparePasswords from '../utils/hashPassword.mjs';
-
-const prisma = new PrismaClient();
-
 class AuthController {
   constructor() {
     this.login = this.login.bind(this);
@@ -39,13 +31,10 @@ class AuthController {
         throw new AppError('Invalid email or password', 401);
       }
 
-      // 3. Gerar token
+      // Rest of the login logic remains the same...
       const token = generateToken(user.id);
-
-      // 4. Remover senha do objeto de resposta
       const { password: _, ...userWithoutPassword } = user;
 
-      // 5. Criar sessão de login
       await prisma.loginSession.create({
         data: {
           userId: user.id,
@@ -66,6 +55,7 @@ class AuthController {
       next(err);
     }
   }
+
 
   async logout(req, res, next) {
     try {

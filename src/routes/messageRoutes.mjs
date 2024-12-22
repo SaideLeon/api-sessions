@@ -1,4 +1,4 @@
-// src/routes/messageRoutes.js
+// src/routes/messageRoutes.mjs
 import { Router } from 'express';
 import MessageController from '../controllers/messageController.mjs';
 import { authenticate } from '../middlewares/auth.mjs';
@@ -9,13 +9,32 @@ const messageController = new MessageController();
 
 router
   .route('/')
-  .post(authenticate, validate(schemas.message.create), messageController.create);
-
-router.get('/session/:sessionId', authenticate, messageController.findBySession);
+  .post(
+    authenticate,
+    validate(schemas.message.create),
+    messageController.create.bind(messageController)
+  )
+  .get(
+    authenticate,
+    messageController.findAll.bind(messageController)
+  );
 
 router
   .route('/:id')
-  .put(authenticate, messageController.update)
-  .delete(authenticate, messageController.delete);
+  .get(
+    authenticate,
+    messageController.findOne.bind(messageController)
+  )
+  .delete(
+    authenticate,
+    messageController.delete.bind(messageController)
+  );
+
+// Rota para buscar mensagens em lote de uma sessão específica
+router.get(
+  '/batch/:sessionId',
+  authenticate,
+  messageController.getBatchMessages.bind(messageController)
+);
 
 export default router;

@@ -1,4 +1,4 @@
-// src/routes/vendorRoutes.js
+// src/routes/vendorRoutes.mjs
 import { Router } from 'express';
 import VendorController from '../controllers/vendorController.mjs';
 import { authenticate } from '../middlewares/auth.mjs';
@@ -9,13 +9,29 @@ const vendorController = new VendorController();
 
 router
   .route('/')
-  .post(authenticate, validate(schemas.vendor.create), vendorController.create)
-  .get(authenticate, vendorController.findAll);
+  .post(
+    authenticate,
+    validate(schemas.vendor.create),
+    vendorController.create.bind(vendorController)
+  )
+  .get(
+    authenticate,
+    vendorController.findAll.bind(vendorController)
+  );
 
 router
   .route('/:id')
-  .get(authenticate, vendorController.findOne)
-  .put(authenticate, vendorController.update)
-  .delete(authenticate, vendorController.delete);
+  .get(
+    authenticate,
+    vendorController.findOne.bind(vendorController)
+  )
+  .put(
+    authenticate,
+    vendorController.update.bind(vendorController)
+  )
+  .delete(
+    authenticate,
+    vendorController.delete.bind(vendorController)
+  );
 
 export default router;

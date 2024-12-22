@@ -33,6 +33,7 @@ model LoginSession {
 model Session {
   id        Int       @id @default(autoincrement())
   sessionId String    @unique
+  title     String?
   userId    Int
   createdAt DateTime  @default(now())
   messages  Message[]

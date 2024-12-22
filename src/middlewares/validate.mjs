@@ -31,11 +31,17 @@ const user = {
 };
 
 const session = {
-  create: object({
-    body: object({
-      userId: string().required()
+    create: object({
+        body: object({
+            userId: string().required(),
+            title: string().min(3).max(100).optional()
+        })
+    }),
+    update: object({
+        body: object({
+            title: string().min(3).max(100).required()
+        })
     })
-  })
 };
 
 const message = {

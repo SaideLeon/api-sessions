@@ -3,15 +3,17 @@ import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import AppError from '../utils/AppError.mjs';
 
-const prisma = new PrismaClient();
-
 class SessionService {
+    constructor() {
+        this.prisma = new PrismaClient();
+    }
+
     async create(data) {
         const { userId, title, type, status } = data;
         console.log('SessionService.create called with:', { userId, title, type, status });
 
         try {
-            const userExists = await prisma.user.findUnique({
+            const userExists = await this.prisma.user.findUnique({
                 where: { id: Number(userId) }
             });
 
@@ -19,7 +21,7 @@ class SessionService {
                 throw new AppError('User not found', 404);
             }
 
-            const session = await prisma.session.create({
+            const session = await this.prisma.session.create({
                 data: {
                     sessionId: uuidv4(),
                     title: title || `Sessão de ${new Date().toLocaleDateString('pt-BR')}`,
@@ -47,7 +49,7 @@ class SessionService {
 
     async findAll() {
         try {
-            return await prisma.session.findMany({
+            return await this.prisma.session.findMany({
                 include: {
                     user: {
                         select: {
@@ -67,7 +69,7 @@ class SessionService {
 
     async findByUser(userId) {
         try {
-            return await prisma.session.findMany({
+            return await this.prisma.session.findMany({
                 where: { userId: Number(userId) },
                 include: {
                     messages: {
@@ -86,7 +88,7 @@ class SessionService {
 
     async delete(id) {
         try {
-            const session = await prisma.session.findUnique({
+            const session = await this.prisma.session.findUnique({
                 where: { id: Number(id) }
             });
 
@@ -94,7 +96,7 @@ class SessionService {
                 throw new AppError('Session not found', 404);
             }
 
-            await prisma.session.delete({
+            await this.prisma.session.delete({
                 where: { id: Number(id) }
             });
         } catch (error) {

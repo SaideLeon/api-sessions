@@ -541,77 +541,79 @@ import SessionService from '../services/sessionService.mjs';
 class SessionController {
     constructor() {
         this.sessionService = new SessionService();
-        console.log('SessionController initialized');
     }
 
     async create(req, res) {
         try {
-            console.log(`Request to create session: ${JSON.stringify(req.body)}`);
-            const { userId, title } = req.body;
-            const session = await this.sessionService.create(userId, title);
-            console.log(`Session created successfully: ${JSON.stringify(session)}`);
-            return res.status(201).json(session);
+            const { userId, title, type, status } = req.body;
+            console.log('Creating session with data:', { userId, title, type, status });
+            
+            const session = await this.sessionService.create({
+                userId,
+                title,
+                type,
+                status
+            });
+            
+            return res.status(201).json({
+                status: 'success',
+                data: session
+            });
         } catch (error) {
-            console.error(`Error creating session: ${error.message}`);
-            return res.status(error.statusCode || 500).json({ message: error.message });
+            console.error('Session creation error:', error);
+            return res.status(error.statusCode || 500).json({
+                status: 'error',
+                message: error.message
+            });
         }
     }
 
     async find(req, res) {
         try {
-            console.log('Request to fetch all sessions');
             const sessions = await this.sessionService.findAll();
-            console.log(`Sessions fetched: ${sessions.length}`);
-            return res.json(sessions);
+            return res.json({
+                status: 'success',
+                data: sessions
+            });
         } catch (error) {
-            console.error(`Error fetching sessions: ${error.message}`);
-            return res.status(500).json({ message: error.message });
+            return res.status(500).json({
+                status: 'error',
+                message: error.message
+            });
         }
     }
 
     async findByUser(req, res) {
         try {
-            console.log(`Request to fetch sessions for user: ${req.params.userId}`);
             const { userId } = req.params;
             const sessions = await this.sessionService.findByUser(userId);
-            console.log(`Sessions fetched for user ${userId}: ${sessions.length}`);
-            return res.json(sessions);
+            return res.json({
+                status: 'success',
+                data: sessions
+            });
         } catch (error) {
-            console.error(`Error fetching sessions for user: ${error.message}`);
-            return res.status(500).json({ message: error.message });
-        }
-    }
-
-    async update(req, res) {
-        try {
-            console.log(`Request to update session: ${JSON.stringify(req.body)}, id: ${req.params.id}`);
-            const { id } = req.params;
-            const { title } = req.body;
-            const session = await this.sessionService.update(id, { title });
-            console.log(`Session updated successfully: ${JSON.stringify(session)}`);
-            return res.json(session);
-        } catch (error) {
-            console.error(`Error updating session: ${error.message}`);
-            return res.status(error.statusCode || 500).json({ message: error.message });
+            return res.status(500).json({
+                status: 'error',
+                message: error.message
+            });
         }
     }
 
     async delete(req, res) {
         try {
-            console.log(`Request to delete session with id: ${req.params.id}`);
             const { id } = req.params;
             await this.sessionService.delete(id);
-            console.log(`Session with id ${id} deleted successfully`);
             return res.status(204).send();
         } catch (error) {
-            console.error(`Error deleting session: ${error.message}`);
-            return res.status(error.statusCode || 500).json({ message: error.message });
+            return res.status(500).json({
+                status: 'error',
+                message: error.message
+            });
         }
     }
 }
 
 export default SessionController;
-
 
 ================================================================================
 Arquivo: ./src/middlewares/auth.mjs
@@ -1111,8 +1113,8 @@ config();
 export const generateToken = (userId) => {
   return jwt.sign(
     { id: userId },
-    process.env.JWT_SECRET;
-    { expiresIn: process.env.JWT_EXPIRES_IN}
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN }
   );
 };
 
@@ -1246,149 +1248,112 @@ export default UserService;
 Arquivo: ./src/services/sessionService.mjs
 ================================================================================
 
-import prisma from '@prisma/client';
+// src/services/sessionService.mjs
+import { PrismaClient } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import AppError from '../utils/AppError.mjs';
 
-const { PrismaClient } = prisma;
+const prisma = new PrismaClient();
 
 class SessionService {
-    constructor() {
-        this.prisma = new PrismaClient();
-        console.log('SessionService initialized');
-    }
+    async create(data) {
+        const { userId, title, type, status } = data;
+        console.log('SessionService.create called with:', { userId, title, type, status });
 
-    async create(userId, title = null) {
-        console.log(`Attempting to create session for userId: ${userId}, title: ${title}`);
+        try {
+            const userExists = await prisma.user.findUnique({
+                where: { id: Number(userId) }
+            });
 
-        const userExists = await this.prisma.user.findUnique({
-            where: { id: Number(userId) }
-        });
+            if (!userExists) {
+                throw new AppError('User not found', 404);
+            }
 
-        if (!userExists) {
-            console.error(`User not found for userId: ${userId}`);
-            throw new AppError('User not found', 404);
-        }
-
-        const defaultTitle = title || `Sessão de ${new Date().toLocaleDateString('pt-BR')}`;
-        console.log(`Default title generated: ${defaultTitle}`);
-
-        const session = await this.prisma.session.create({
-            data: {
-                sessionId: uuidv4(),
-                title: defaultTitle,
-                userId: Number(userId)
-            },
-            include: {
-                user: {
-                    select: {
-                        username: true,
-                        email: true
+            const session = await prisma.session.create({
+                data: {
+                    sessionId: uuidv4(),
+                    title: title || `Sessão de ${new Date().toLocaleDateString('pt-BR')}`,
+                    type: type || 'regular',
+                    status: status || 'active',
+                    userId: Number(userId)
+                },
+                include: {
+                    user: {
+                        select: {
+                            username: true,
+                            email: true
+                        }
                     }
                 }
-            }
-        });
+            });
 
-        console.log(`Session created successfully: ${JSON.stringify(session)}`);
-        return session;
+            console.log('Session created:', session);
+            return session;
+        } catch (error) {
+            console.error('Error in SessionService.create:', error);
+            throw new AppError(error.message || 'Error creating session', 500);
+        }
     }
 
     async findAll() {
-        console.log('Fetching all sessions...');
-        const sessions = await this.prisma.session.findMany({
-            include: {
-                user: {
-                    select: {
-                        username: true,
-                        email: true
-                    }
-                },
-                messages: true,
-                vendors: true,
-                seller: true
-            }
-        });
-        console.log(`Total sessions fetched: ${sessions.length}`);
-        return sessions;
+        try {
+            return await prisma.session.findMany({
+                include: {
+                    user: {
+                        select: {
+                            username: true,
+                            email: true
+                        }
+                    },
+                    messages: true,
+                    vendors: true,
+                    seller: true
+                }
+            });
+        } catch (error) {
+            throw new AppError('Error fetching sessions', 500);
+        }
     }
 
     async findByUser(userId) {
-        console.log(`Fetching sessions for userId: ${userId}`);
-
-        const sessions = await this.prisma.session.findMany({
-            where: { userId: Number(userId) },
-            include: {
-                messages: {
-                    take: 1,
-                    orderBy: {
-                        createdAt: 'desc'
-                    }
+        try {
+            return await prisma.session.findMany({
+                where: { userId: Number(userId) },
+                include: {
+                    messages: {
+                        take: 1,
+                        orderBy: { createdAt: 'desc' }
+                    },
+                    vendors: true,
+                    seller: true
                 },
-                vendors: true,
-                seller: true
-            },
-            orderBy: {
-                createdAt: 'desc'
-            }
-        });
-
-        console.log(`Total sessions fetched for userId ${userId}: ${sessions.length}`);
-        return sessions;
-    }
-
-    async update(id, data) {
-        console.log(`Attempting to update session with id: ${id}, data: ${JSON.stringify(data)}`);
-
-        const session = await this.prisma.session.findUnique({
-            where: { id: Number(id) }
-        });
-
-        if (!session) {
-            console.error(`Session not found for id: ${id}`);
-            throw new AppError('Session not found', 404);
+                orderBy: { createdAt: 'desc' }
+            });
+        } catch (error) {
+            throw new AppError('Error fetching user sessions', 500);
         }
-
-        const updatedSession = await this.prisma.session.update({
-            where: { id: Number(id) },
-            data: {
-                title: data.title
-            },
-            include: {
-                user: {
-                    select: {
-                        username: true,
-                        email: true
-                    }
-                }
-            }
-        });
-
-        console.log(`Session updated successfully: ${JSON.stringify(updatedSession)}`);
-        return updatedSession;
     }
 
     async delete(id) {
-        console.log(`Attempting to delete session with id: ${id}`);
+        try {
+            const session = await prisma.session.findUnique({
+                where: { id: Number(id) }
+            });
 
-        const session = await this.prisma.session.findUnique({
-            where: { id: Number(id) }
-        });
+            if (!session) {
+                throw new AppError('Session not found', 404);
+            }
 
-        if (!session) {
-            console.error(`Session not found for id: ${id}`);
-            throw new AppError('Session not found', 404);
+            await prisma.session.delete({
+                where: { id: Number(id) }
+            });
+        } catch (error) {
+            throw new AppError('Error deleting session', 500);
         }
-
-        await this.prisma.session.delete({
-            where: { id: Number(id) }
-        });
-
-        console.log(`Session with id: ${id} deleted successfully`);
     }
 }
 
 export default SessionService;
-
 
 ================================================================================
 Arquivo: ./src/services/messageService.mjs
@@ -1766,11 +1731,12 @@ model LoginSession {
   updatedAt DateTime @updatedAt
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-
 model Session {
   id        Int       @id @default(autoincrement())
   sessionId String    @unique
   title     String?
+  type      String?   @default("regular")
+  status    String?   @default("active")
   userId    Int
   createdAt DateTime  @default(now())
   messages  Message[]
@@ -1778,6 +1744,7 @@ model Session {
   user      User      @relation(fields: [userId], references: [id])
   vendors   Vendor[]
 }
+
 
 model Message {
   id          Int      @id @default(autoincrement())

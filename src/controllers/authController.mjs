@@ -1,5 +1,12 @@
+// controllers/authController.mjs
+import { PrismaClient } from '@prisma/client';
+import AppError from '../utils/AppError.mjs';
+import { generateToken } from '../utils/generateToken.mjs';
+import { comparePasswords } from '../utils/hashPassword.mjs';
+
 class AuthController {
   constructor() {
+    this.prisma = new PrismaClient();
     this.login = this.login.bind(this);
     this.logout = this.logout.bind(this);
     this.refreshToken = this.refreshToken.bind(this);
@@ -10,7 +17,7 @@ class AuthController {
       const { email, password } = req.body;
 
       // 1. Verificar se usuário existe
-      const user = await prisma.user.findUnique({
+      const user = await this.prisma.user.findUnique({
         where: { email },
         select: {
           id: true,
@@ -31,11 +38,14 @@ class AuthController {
         throw new AppError('Invalid email or password', 401);
       }
 
-      // Rest of the login logic remains the same...
+      // 3. Gerar token
       const token = generateToken(user.id);
+
+      // 4. Remover senha do objeto de resposta
       const { password: _, ...userWithoutPassword } = user;
 
-      await prisma.loginSession.create({
+      // 5. Criar sessão de login
+      await this.prisma.loginSession.create({
         data: {
           userId: user.id,
           token,
@@ -56,13 +66,11 @@ class AuthController {
     }
   }
 
-
   async logout(req, res, next) {
     try {
       const { token } = req;
 
-      // Invalidar token atual
-      await prisma.loginSession.update({
+      await this.prisma.loginSession.update({
         where: { token },
         data: { isValid: false }
       });

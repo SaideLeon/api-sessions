@@ -19,17 +19,8 @@ const logger = createLogger({
 const puppeteerConfig = {
     args: [
         '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-web-security',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process'
     ],
-    headless: true,
-    defaultViewport: null, // Remove configurações específicas de viewport
-    timeout: 60000
+    headless: true
 };
 
 
@@ -37,13 +28,6 @@ const puppeteerConfig = {
 const tools = new Tools();
 const prisma = new PrismaClient();
 
-/**
- * Cria e gerencia uma sessão do WhatsApp
- * @param {string} sessionId - ID único da sessão.
- * @param {string} userId - ID do usuário associado.
- * @param {Map} sessions - Objeto contendo as sessões ativas.
- * @param {Server} io - Instância do Socket.IO para comunicação em tempo real.
- */
 export async function createSession(sessionId, userId, sessions, io) {
     if (sessions.has(sessionId)) {
         console.log(`Sessão ${sessionId} já está ativa.`);
@@ -55,8 +39,7 @@ export async function createSession(sessionId, userId, sessions, io) {
         authStrategy: new LocalAuth({ clientId: sessionId }),
       
          puppeteer: puppeteerConfig,
-            qrMaxRetries: 5,
-            restartOnAuthFail: true
+            qrMaxRetries: 25,
     });
 
 

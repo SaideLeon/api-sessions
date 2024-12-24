@@ -136,10 +136,7 @@ export async function createSession(sessionId, userId, sessions, io) {
 
     try {
         const client = new Client({
-            authStrategy: new LocalAuth({ 
-                clientId: sessionId,
-                dataPath: './whatsapp-sessions'
-            }),
+            authStrategy: new LocalAuth({ clientId: sessionId }),
             puppeteer: puppeteerConfig,
             qrMaxRetries: 5,
             restartOnAuthFail: true

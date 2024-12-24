@@ -24,6 +24,7 @@ import authRoutes from './routes/authRoutes.mjs';
 // Middlewares
 import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.mjs';
 import { limiter } from './middlewares/rateLimit.mjs';
+import initSessions from './utils/initSession.mjs'; 
 
 // Configurações
 config(); // Carrega variáveis de ambiente
@@ -69,6 +70,7 @@ class App {
     this.middlewares();
     this.routes();
     this.errorHandling();
+    this.initAllSessions();
   }
 
   validateEnvironment() {
@@ -106,6 +108,7 @@ class App {
       pingTimeout: 60000,
       pingInterval: 25000
     });
+  
 
     this.io.on('connection', (socket) => {
       logger.info(`WebSocket client connected: ${socket.id}`);
@@ -175,6 +178,10 @@ class App {
       req.logger = logger;
       next();
     });
+  }
+  
+  initAllSessions() {
+  	initSessions(this.io, this.sessions);
   }
 
   routes() {

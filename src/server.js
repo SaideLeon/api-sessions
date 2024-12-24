@@ -1,4 +1,3 @@
-// src/server.js
 import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
@@ -81,8 +80,7 @@ class App {
       'JWT_EXPIRES_IN',
       'CORS_ORIGIN',
       'GROQ_API_KEY',
-      'GROQ_MODEL',
-      
+      'GROQ_MODEL'
     ];
 
     for (const envVar of requiredEnvVars) {
@@ -189,7 +187,7 @@ class App {
         message: 'Server is running',
         timestamp: req.requestTime,
         environment: process.env.NODE_ENV,
-        version: process.env.npm_package_version || '1.0.0',
+        version: process.env.npm_package_version || '19.0.0',
         websocket: this.io ? 'enabled' : 'disabled'
       });
     });
@@ -197,8 +195,10 @@ class App {
     // API routes
     this.app.use(`${apiV1}/users`, userRoutes);
     this.app.use(`${apiV1}/auth`, authRoutes);
+    
+    // Corrigindo a passagem do objeto sessions para as rotas
     this.app.use(`${apiV1}/sessions`, createNewSession(this.io, this.sessions));
-    this.app.use(`${apiV1}/sessions`, getQrCode(sessions));
+    this.app.use(`${apiV1}/sessions`, getQrCode(this.sessions)); // Fixed: Passing this.sessions
     this.app.use(`${apiV1}/sessions`, getUserSessions);
     
     this.app.use(`${apiV1}/messages`, messageRoutes);
@@ -272,6 +272,10 @@ class App {
 
   getIO() {
     return this.io;
+  }
+
+  getSessions() {
+    return this.sessions;
   }
 }
 

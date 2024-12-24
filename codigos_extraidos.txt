@@ -7,7 +7,6 @@ Diretório base: ./src
 Arquivo: ./src/server.js
 ================================================================================
 
-// src/server.js
 import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
@@ -18,17 +17,23 @@ import { config } from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import http from 'http';
+import { Server as SocketServer } from 'socket.io';
+import winston from 'winston';
+import { rateLimit } from 'express-rate-limit';
 
 // Rotas
 import userRoutes from './routes/userRoutes.mjs';
-import sessionRoutes from './routes/sessionRoutes.mjs';
+import { createNewSession, getUserSessions, getQrCode } from './routes/sessionsRoutes.mjs';
 import messageRoutes from './routes/messageRoutes.mjs';
 import vendorRoutes from './routes/vendorRoutes.mjs';
 import sellerRoutes from './routes/sellerRoutes.mjs';
 import authRoutes from './routes/authRoutes.mjs';
+
 // Middlewares
 import { errorHandler, notFound, handleUncaughtExceptions } from './middlewares/error.mjs';
 import { limiter } from './middlewares/rateLimit.mjs';
+import initSessions from './utils/initSession.mjs'; 
 
 // Configurações
 config(); // Carrega variáveis de ambiente
@@ -36,133 +41,389 @@ const prisma = new PrismaClient();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Configuração do Logger
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    }),
+    new winston.transports.File({ filename: 'error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'combined.log' })
+  ]
+});
+
 // Tratamento de exceções não capturadas
 handleUncaughtExceptions();
 
 class App {
   constructor() {
     this.app = express();
+    this.server = null;
+    this.io = null;
+    this.sessions = new Map();
     this.isDevelopment = process.env.NODE_ENV === 'development';
+    this.prisma = prisma;
 
+    // Inicialização
+    this.validateEnvironment();
+    this.createServer();
+    this.setupWebSocket();
     this.middlewares();
     this.routes();
     this.errorHandling();
-    this.database();
+    this.initAllSessions();
+  }
+
+  validateEnvironment() {
+    const requiredEnvVars = [
+      'NODE_ENV',
+      'PORT',
+      'DATABASE_URL',
+      'JWT_SECRET',
+      'JWT_EXPIRES_IN',
+      'CORS_ORIGIN',
+      'GROQ_API_KEY',
+      'GROQ_MODEL'
+    ];
+
+    for (const envVar of requiredEnvVars) {
+      if (!process.env[envVar]) {
+        logger.error(`Missing required environment variable: ${envVar}`);
+        process.exit(1);
+      }
+    }
+  }
+
+  createServer() {
+    this.server = http.createServer(this.app);
+    return this.server;
+  }
+
+  setupWebSocket() {
+    this.io = new SocketServer(this.server, {
+      cors: {
+        origin: process.env.CORS_ORIGIN || '*',
+        methods: ['GET', 'POST'],
+        credentials: true
+      },
+      pingTimeout: 60000,
+      pingInterval: 25000
+    });
+  
+
+    this.io.on('connection', (socket) => {
+      logger.info(`WebSocket client connected: ${socket.id}`);
+
+      socket.on('disconnect', () => {
+        logger.info(`WebSocket client disconnected: ${socket.id}`);
+      });
+
+      socket.on('error', (error) => {
+        logger.error(`WebSocket error for client ${socket.id}:`, error);
+      });
+    });
   }
 
   middlewares() {
-    // Configuração para proxies (necessária para express-rate-limit)
+    // Configuração para proxies
     this.app.set('trust proxy', 1);
 
     // Segurança
-    this.app.use(helmet()); // Segurança com headers HTTP
+    this.app.use(helmet());
     this.app.use(cors({
       origin: process.env.CORS_ORIGIN || '*',
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
+      maxAge: 86400
     }));
-    this.app.use(limiter); // Rate limiting
+    
+    // Rate limiting
+    const apiLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 100,
+      standardHeaders: true,
+      legacyHeaders: false,
+      handler: (req, res) => {
+        logger.warn(`Rate limit exceeded for IP: ${req.ip}`);
+        res.status(429).json({
+          status: 'error',
+          message: 'Too many requests, please try again later.'
+        });
+      }
+    });
+    this.app.use('/api/', apiLimiter);
 
     // Body parsing
-    this.app.use(express.json({ limit: '10kb' })); // Limita tamanho do body
+    this.app.use(express.json({ limit: '10kb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-    // Compressão de resposta
+    // Compressão
     this.app.use(compression());
 
     // Logging
     if (this.isDevelopment) {
       this.app.use(morgan('dev'));
     } else {
-      this.app.use(morgan('combined'));
+      this.app.use(morgan('combined', {
+        stream: { write: message => logger.info(message.trim()) }
+      }));
     }
 
-    // Servir arquivos estáticos (se necessário)
+    // Arquivos estáticos
     this.app.use('/public', express.static(join(__dirname, '../public')));
 
     // Timestamp da requisição
     this.app.use((req, res, next) => {
       req.requestTime = new Date().toISOString();
+      req.logger = logger;
       next();
     });
   }
+  
+  initAllSessions() {
+  	initSessions(this.io, this.sessions);
+  }
 
   routes() {
+    const apiV1 = '/api/v1';
+
     // Health check
-    this.app.get('/api/v1/health', (req, res) => {
+    this.app.get(`${apiV1}/health`, (req, res) => {
       res.status(200).json({
         status: 'success',
         message: 'Server is running',
         timestamp: req.requestTime,
-        environment: process.env.NODE_ENV
+        environment: process.env.NODE_ENV,
+        version: process.env.npm_package_version || '19.0.0',
+        websocket: this.io ? 'enabled' : 'disabled'
       });
     });
 
     // API routes
-    this.app.use('/api/v1/users', userRoutes);
-    this.app.use('/api/v1/auth', authRoutes);
-    this.app.use('/api/v1/sessions', sessionRoutes);
-    this.app.use('/api/v1/messages', messageRoutes);
-    this.app.use('/api/v1/vendors', vendorRoutes);
-    this.app.use('/api/v1/sellers', sellerRoutes);
+    this.app.use(`${apiV1}/users`, userRoutes);
+    this.app.use(`${apiV1}/auth`, authRoutes);
+    
+    // Corrigindo a passagem do objeto sessions para as rotas
+    this.app.use(`${apiV1}/sessions`, createNewSession(this.io, this.sessions));
+    this.app.use(`${apiV1}/sessions`, getQrCode(this.sessions)); // Fixed: Passing this.sessions
+    this.app.use(`${apiV1}/sessions`, getUserSessions);
+    
+    this.app.use(`${apiV1}/messages`, messageRoutes);
+    this.app.use(`${apiV1}/vendors`, vendorRoutes);
+    this.app.use(`${apiV1}/sellers`, sellerRoutes);
 
     // Handle undefined routes
     this.app.use(notFound);
   }
 
   errorHandling() {
-    // Middleware global de tratamento de erros
     this.app.use(errorHandler);
   }
 
-  async database() {
+  async connectDatabase() {
     try {
-      await prisma.$connect();
-      console.log('📦 Database connected successfully');
+      await this.prisma.$connect();
+      logger.info('📦 Database connected successfully');
     } catch (error) {
-      console.error('❌ Database connection error:', error);
-      process.exit(1);
+      logger.error('❌ Database connection error:', error);
+      throw error;
     }
+  }
+
+  async start() {
+    try {
+      await this.connectDatabase();
+      
+      const PORT = process.env.PORT || 3000;
+
+      return new Promise((resolve) => {
+        this.server.listen(PORT, () => {
+          logger.info(`
+🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}
+⭐️ API URL: http://localhost:${PORT}${process.env.API_PREFIX || '/api/v1'}
+📝 API Docs: http://localhost:${PORT}/api-docs
+🔌 WebSocket enabled
+          `);
+          resolve(this.server);
+        });
+      });
+    } catch (error) {
+      logger.error('Failed to start server:', error);
+      throw error;
+    }
+  }
+
+  async stop() {
+    if (this.io) {
+      this.io.close();
+    }
+    
+    if (this.server) {
+      return new Promise((resolve) => {
+        this.server.close(async () => {
+          await this.prisma.$disconnect();
+          logger.info('Server, WebSocket, and database connections closed');
+          resolve();
+        });
+      });
+    }
+  }
+
+  getServer() {
+    return this.server;
   }
 
   getApp() {
     return this.app;
   }
+
+  getIO() {
+    return this.io;
+  }
+
+  getSessions() {
+    return this.sessions;
+  }
 }
 
-// Instância do servidor
-const app = new App().getApp();
+// Criação da instância
+const appInstance = new App();
 
 // Inicialização do servidor
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  console.log(`
-🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}
-⭐️ API URL: http://localhost:${PORT}/api/v1
-📝 API Docs: http://localhost:${PORT}/api-docs
-  `);
-});
+const startServer = async () => {
+  try {
+    await appInstance.start();
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 // Tratamento de erros não capturados
-process.on('unhandledRejection', (err) => {
-  console.error('UNHANDLED REJECTION! 💥 Shutting down...');
-  console.error(err.name, err.message);
-  server.close(() => {
-    process.exit(1);
-  });
+process.on('unhandledRejection', async (err) => {
+  logger.error('UNHANDLED REJECTION! 💥 Shutting down...', err);
+  await appInstance.stop();
+  process.exit(1);
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('👋 SIGTERM RECEIVED. Shutting down gracefully');
-  server.close(async () => {
-    await prisma.$disconnect();
-    console.log('💥 Process terminated!');
-    process.exit(0);
-  });
+process.on('SIGTERM', async () => {
+  logger.info('👋 SIGTERM RECEIVED. Shutting down gracefully');
+  await appInstance.stop();
+  process.exit(0);
 });
 
-export default app;
+// Tratamento de exceções não capturadas
+process.on('uncaughtException', async (err) => {
+  logger.error('UNCAUGHT EXCEPTION! 💥 Shutting down...', err);
+  await appInstance.stop();
+  process.exit(1);
+});
+
+export default appInstance.getApp();
+
+================================================================================
+Arquivo: ./src/cerebro.mjs
+================================================================================
+
+import fs from 'fs';
+import dotenv from 'dotenv';
+import path from 'path';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import temp from 'temp'; 
+import { Groq } from 'groq-sdk';
+import personAI from "./core/person.mjs";
+
+dotenv.config(); 
+
+temp.track();
+const visionModel = new ChatGoogleGenerativeAI({
+    model: "gemini-1.5-flash",
+    maxOutputTokens: 2048,
+});
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groqModel = process.env.GROQ_MODEL;
+
+class Cerebro {
+    constructor() {
+        if (!groqModel) {
+            throw new Error("Modelo GROQ não configurado. Verifique GROQ_MODEL no arquivo .env.");
+        }
+    }
+
+    async gerarRespostaIA(userId, mensagemUsuario, sessionId) {
+        try {
+        	const respostaIA = await personAI(sessionid=sessionId, userPrompt=mensagemUsuario, number=userId);
+         
+            return respostaIA;
+        } catch (error) {
+            console.error("Erro ao gerar resposta da IA:", error.message);
+            return "Houve um erro ao tentar gerar a resposta.";
+        }
+    }
+
+    async transcreverAudio(userId, mediaData, sessionId) {
+        let tempFilePath;
+        try {
+            tempFilePath = temp.path({ suffix: ".mp3" });
+            fs.writeFileSync(tempFilePath, mediaData.data.split(",")[1], { encoding: "base64" });
+
+            const transcription = await groq.audio.transcriptions.create({
+                file: fs.createReadStream(tempFilePath),
+                model: "whisper-large-v3-turbo",
+            });
+
+            const transcricao = transcription.text || "Não consegui transcrever o áudio.";
+            return await this.gerarRespostaIA(userId, transcricao, sessionId);
+        } catch (error) {
+            console.error("Erro ao transcrever o áudio:", error.message);
+            return "Desculpe, houve um erro ao processar o áudio.";
+        } finally {
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                fs.unlinkSync(tempFilePath);
+            }
+        }
+    }
+
+    async gerarRespostaImagem(userId, mediaData) {
+        try {
+            const input = [
+                {
+                    role: "human",
+                    content: [
+                        { type: "text", text: "Analise a imagem fornecida e descreva-a detalhadamente." },
+                        { type: "image_url", image_url: mediaData.data },
+                    ],
+                },
+            ];
+
+            const res = await visionModel.invoke(input);
+            const respostaIA = res?.content || "Não consegui analisar a imagem.";
+
+            this.atualizarHistorico(userId, { role: "user", content: "[Imagem recebida do usuário]" });
+            this.atualizarHistorico(userId, { role: "assistant", content: respostaIA });
+
+            return respostaIA;
+        } catch (error) {
+            console.error("Erro ao processar a imagem:", error.message);
+            return "Desculpe, houve um erro ao analisar a imagem.";
+        }
+    }
+}
+
+export default Cerebro;
 
 
 ================================================================================
@@ -1668,6 +1929,113 @@ router.get(
 export default router;
 
 ================================================================================
+Arquivo: ./src/routes/sessionsRoutes.mjs
+================================================================================
+
+// Importação de módulos
+import express from 'express';
+import Joi from 'joi';
+import qrcode from 'qrcode';
+import { PrismaClient } from '@prisma/client';
+import { authenticate } from '../middlewares/auth.mjs';
+import { createSession } from '../utils/createSession.mjs';
+
+const prisma = new PrismaClient();
+const router = express.Router();
+
+// Validação do schema de sessão
+const sessionSchema = Joi.object({
+  sessionId: Joi.string().required(),
+  userId: Joi.number().integer().required(),
+});
+
+/**
+ * Criar uma nova sessão para um usuário
+ */
+export const createNewSession = (io, sessions) =>
+  router.post('/create', async (req, res) => {
+    const { error } = sessionSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
+
+    const { sessionId, userId } = req.body;
+
+    try {
+      if (!sessionId || !userId) {
+        return res.status(400).json({ error: 'sessionId e userId são obrigatórios.' });
+      }
+
+      if (sessions[sessionId]) {
+        return res.status(400).json({ error: 'Sessão já existe.' });
+      }
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        return res.status(404).json({ error: 'Usuário não encontrado.' });
+      }
+
+      // Criar sessão usando a função utilitária
+      createSession(sessionId, userId, sessions, io, false);
+      res.status(200).json({ message: 'Sessão criada. Aguarde o QR code.' });
+    } catch (err) {
+      console.error('Erro ao criar sessão:', err);
+      res.status(500).json({ error: 'Erro ao criar sessão.', details: err.message });
+    }
+  });
+
+/**
+ * Obter todas as sessões de um usuário
+ */
+export const getUserSessions = router.get('/user-sessions/:userId', authenticate, async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const userIdParsed = parseInt(userId, 10);
+    if (isNaN(userIdParsed)) {
+      return res.status(400).json({ error: 'ID de usuário inválido.' });
+    }
+
+    const userSessions = await prisma.session.findMany({
+      where: { userId: userIdParsed },
+    });
+    res.status(200).json(userSessions);
+  } catch (error) {
+    console.error('Erro ao buscar sessões:', error);
+    res.status(500).json({ error: 'Erro ao buscar sessões.' });
+  }
+});
+
+/**
+ * Obter QR Code de uma sessão
+ */
+export const getQrCode = (sessions) =>
+  router.get('/get-qr/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+
+    try {
+      if (!sessions[sessionId]) {
+        return res.status(404).json({ error: 'Sessão não encontrada.' });
+      }
+
+      const { qr, ready } = sessions[sessionId];
+      if (ready) {
+        return res.status(400).json({ error: 'Sessão já conectada.' });
+      }
+
+      if (!qr) {
+        return res.status(400).json({ error: 'QR Code ainda não gerado. Tente novamente.' });
+      }
+
+      const qrImage = await qrcode.toDataURL(qr);
+      res.status(200).json({ qrCode: qrImage });
+    } catch (err) {
+      console.error('Erro ao gerar QR Code:', err);
+      res.status(500).json({ error: 'Erro ao gerar QR Code.', details: err.message });
+    }
+  });
+ 
+
+
+================================================================================
 Arquivo: ./src/utils/hashPassword.mjs
 ================================================================================
 
@@ -1691,6 +2059,29 @@ Arquivo: ./src/utils/validators.js
 ================================================================================
 
 
+
+================================================================================
+Arquivo: ./src/utils/buildMessage.js
+================================================================================
+
+// Função para construir mensagens para a IA
+async function buildMessages(system, prompt, database) {
+    return [
+      {
+        role: "system",
+        content: system
+      }
+      ,
+      {
+        role: "user",
+        content: `Prompt: "${prompt}". Banco de dados: ${JSON.stringify(
+          database
+        )}.`,
+      },
+    ];
+  }
+
+export default buildMessages;
 
 ================================================================================
 Arquivo: ./src/utils/AppError.mjs
@@ -1726,6 +2117,291 @@ export const generateToken = (userId) => {
     { expiresIn: process.env.JWT_EXPIRES_IN }
   );
 };
+
+================================================================================
+Arquivo: ./src/utils/createSession.mjs
+================================================================================
+
+// Importações
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
+import personAI from "../core/person.mjs";
+
+
+import Tools from './tools.mjs';
+import { PrismaClient } from '@prisma/client';
+import { Server } from 'socket.io';
+
+// Inicializações
+const tools = new Tools();
+const prisma = new PrismaClient();
+
+/**
+ * Cria e gerencia uma sessão do WhatsApp
+ * @param {string} sessionId - ID único da sessão
+ * @param {string} userId - ID do usuário associado
+ * @param {Object} sessions - Objeto contendo as sessões ativas
+ * @param {Server} io - Instância do Socket.IO para comunicação
+ */
+export async function createSession(sessionId, userId, sessions, io) {
+    const client = new Client({
+        authStrategy: new LocalAuth({ clientId: sessionId }),
+    });
+
+    // Evento de QR Code gerado
+    client.on('qr', async (qr) => {
+        console.log(`QR code gerado para a sessão ${sessionId}`);
+        sessions[sessionId] = { ...sessions[sessionId], qr };
+        io.emit(`qr-${sessionId}`, qr);
+    });
+
+    // Evento quando o cliente está pronto
+    client.on('ready', async () => {
+        console.log(`Cliente ${sessionId} está pronto!`);
+        sessions[sessionId] = { ...sessions[sessionId], ready: true };
+
+        try {
+            await prisma.session.upsert({
+                where: { sessionId },
+                update: { createdAt: new Date() },
+                create: { sessionId, userId },
+            });
+            io.emit(`ready-${sessionId}`);
+        } catch (error) {
+            console.error(`Erro ao salvar a sessão ${sessionId} no banco de dados:`, error);
+        }
+    });
+
+    // Evento para mensagens recebidas
+    client.on('message', async (message) => {
+        if (message.fromMe) return;
+
+        const userId = message.from;
+        if (userId.includes('status')) return; // Ignora mensagens de status
+
+        try {
+            let resposta;
+
+            if (message.hasMedia) {
+                const mediaData = await tools.baixarMidia(message);
+                resposta = mediaData
+                    ? await tools.processarMedia(userId, mediaData, sessionId)
+                    : "Não consegui baixar a mídia.";
+            } else {
+                resposta = await tools.processarTexto(userId, message.body, sessionId);
+            }
+
+            if (resposta) {
+                await message.reply(resposta.replace(/\*\*/g, '*'));
+            }
+        } catch (error) {
+            console.error(`Erro ao processar mensagem para o usuário ${userId}:`, error);
+        }
+    });
+
+    // Evento quando o cliente é desconectado
+    client.on('disconnected', () => {
+        console.log(`Cliente ${sessionId} desconectado.`); 
+        io.emit(`disconnected-${sessionId}`);
+    });
+
+    // Inicialização do cliente
+    try {
+        await client.initialize();
+        sessions[sessionId] = { client, qr: null, ready: false };
+    } catch (error) {
+        console.error(`Erro ao inicializar o cliente para a sessão ${sessionId}:`, error);
+        delete sessions[sessionId];
+    }
+}
+
+
+================================================================================
+Arquivo: ./src/utils/tools.mjs
+================================================================================
+
+import Cerebro from '../cerebro.mjs';
+
+const cerebro = new Cerebro();
+
+class Tools {
+  constructor() {}
+  // Processa o texto enviado pelo usuário
+  async processarTexto(userId, mensagemUsuario, sessionId) {
+    return await cerebro.gerarRespostaIA(userId, mensagemUsuario, sessionId);
+  }
+
+  // Processa mídias enviadas pelo usuário
+  async processarMedia(userId, mediaData, sessionId) {
+    if (mediaData.mimetype.startsWith('image')) {
+      return await cerebro.gerarRespostaImagem(userId, mediaData);
+    } else if (mediaData.mimetype.startsWith('audio')) {
+      return await cerebro.transcreverAudio(userId, mediaData, sessionId);
+    }
+    return 'Tipo de mídia não suportado.';
+  }
+
+  // Baixa a mídia recebida na mensagem
+  async baixarMidia(message) {
+    try {
+      const media = await message.downloadMedia();
+      return media ? {
+        mimetype: media.mimetype,
+        data: `data:${media.mimetype};base64,${media.data}`,
+      } : null;
+    } catch (error) {
+      console.error('Erro ao baixar a mídia:', error);
+      return { error: 'Falha ao baixar a mídia.' };
+    }
+  }
+}
+
+export default Tools;
+
+ 
+
+================================================================================
+Arquivo: ./src/utils/initSession.mjs
+================================================================================
+
+// Importações
+import { PrismaClient } from '@prisma/client';
+import { createSession } from './createSession.mjs';
+
+// Inicialização do Prisma
+const prisma = new PrismaClient();
+
+/**
+ * Inicializa todas as sessões salvas no banco de dados
+ * @param {Object} sessions - Objeto que armazena sessões ativas
+ * @param {import('socket.io').Server} io - Instância do Socket.IO
+ */
+async function initSessions(sessions, io) {
+    try {
+        // Buscando todas as sessões no banco de dados
+        const sessionsFromDB = await prisma.session.findMany();
+
+        // Iterando sobre as sessões e recriando-as
+        sessionsFromDB.forEach(session => {
+            createSession(session.sessionId, session.userId, sessions, io, true);
+        });
+    } catch (error) {
+        console.error("Erro ao buscar sessões:", error);
+    }
+}
+export default initSessions;
+
+================================================================================
+Arquivo: ./src/utils/vendorSearch.mjs
+================================================================================
+
+import logger from "../log/logger.mjs";
+
+class SellerService {
+  constructor(prismaClient) {
+    this.prisma = prismaClient;
+  }
+
+  /**
+   * Busca vendedores com base nos parâmetros fornecidos.
+   * @param {Object} options - Parâmetros de busca.
+   * @param {string} options.sessionId - Identificador da sessão.
+   * @param {string} [options.sellerName] - Nome do vendedor (opcional).
+   * @param {string} [options.product] - Nome do produto (opcional).
+   * @param {string} [options.returnType="sellers"] - Tipo de retorno desejado ("sellers" ou "results").
+   * @returns {Object} Resultado da busca.
+   */
+  async findSellers({ sessionId, sellerName, product, returnType = "sellers" }) {
+    try {
+      let results = [];
+
+      // Busca por nome do vendedor
+      if (sellerName) {
+        results = await this.prisma.seller.findMany({
+          where: {
+            sessionId,
+            sellerName: {
+              contains: sellerName,
+              mode: "insensitive",
+            },
+          },
+        });
+      }
+
+      // Busca por produto, caso não tenha resultados por nome
+      if (results.length === 0 && product) {
+        results = await this.prisma.seller.findMany({
+          where: {
+            sessionId,
+            product: {
+              contains: product,
+              mode: "insensitive",
+            },
+          },
+        });
+      }
+
+      // Caso ainda não haja resultados, busca todos os vendedores da sessão
+      if (results.length === 0) {
+        results = await this.prisma.seller.findMany({
+          where: { sessionId },
+        });
+      }
+
+      // Decisão sobre o tipo de retorno
+      if (returnType === "sellers") {
+        // Mapeia os resultados para a estrutura desejada
+        const sellers = results.map(({ sellerName, product }) => ({
+          sellerName,
+          product,
+        }));
+
+        return { sellers };
+      }
+
+      // Retorna os resultados completos se o tipo for "results"
+      return { results };
+    } catch (error) {
+      logger.error("Erro ao buscar vendedores no banco de dados:", error);
+      throw new Error("Erro interno ao acessar o banco de dados.");
+    }
+  }
+
+  /**
+   * Busca o vendedor mais recente para uma sessionId.
+   * @param {Object} options - Parâmetros de busca.
+   * @param {string} options.sessionId - Identificador da sessão.
+   * @param {string} [options.returnType="sellers"] - Tipo de retorno desejado ("sellers" ou "results").
+   * @returns {Object} Vendedor mais recente.
+   */
+  async findMostRecentSeller({ sessionId, returnType = "seller" }) {
+    try {
+      const recentSeller = await this.prisma.seller.findFirst({
+        where: { sessionId },
+        orderBy: { createdAt: 'desc' },  // Ordena pela data de criação em ordem decrescente
+      });
+
+      if (!recentSeller) {
+        return { seller: null };
+      }
+
+      // Decide o tipo de retorno baseado no parâmetro returnType
+      if (returnType === "seller") {
+        const { sellerName, product } = recentSeller;
+        return { seller: [{ sellerName, product }] };
+      }
+
+      // Retorna o resultado completo se o tipo for "results"
+      return { seller: recentSeller };
+    } catch (error) {
+      logger.error("Erro ao buscar vendedor mais recente no banco de dados:", error);
+      throw new Error("Erro interno ao acessar o banco de dados.");
+    }
+  }
+}
+
+export default SellerService;
+
 
 ================================================================================
 Arquivo: ./src/services/userService.mjs
@@ -1852,6 +2528,472 @@ class UserService {
 }
 
 export default UserService;
+
+================================================================================
+Arquivo: ./src/services/sellerService.mjs
+================================================================================
+
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export default class Seller {
+    constructor() {
+        this.prisma = prisma;
+    }
+
+    // Criar vendedor
+    async create({ sessionId, sellerName, product, description, benefits, image = null }) {
+        try {
+            // Validação simples dos dados antes de criar o vendedor
+            if (!sellerName || !sessionId || !product || !description || !benefits) {
+                return {
+                    success: false,
+                    message: 'Todos os campos obrigatórios devem ser preenchidos.',
+                };
+            }
+
+            const seller = await this.prisma.seller.create({
+                data: {
+                    sessionId,
+                    sellerName,
+                    product,
+                    description,
+                    benefits,
+                    image: image ?? null,
+                },
+            });
+            return { success: true, message: 'Vendedor criado com sucesso!', seller };
+        } catch (error) {
+            if (error.code === 'P2002') {
+                // Erro P2002 é retornado quando uma restrição de unicidade é violada
+                return {
+                    success: false,
+                    message: `O vendedor "${sellerName}" já está registrado nesta sessão.`,
+                };
+            }
+            console.error("Erro ao criar vendedor:", error);
+            throw new Error('Erro ao criar vendedor');
+        }
+    }
+
+    // Buscar todos os vendedores de uma sessão
+    async findSeller(sessionId) {
+        try {
+            const sellers = await this.prisma.seller.findMany({
+                where: { sessionId },
+                orderBy: { createdAt: 'asc' },
+            });
+            return sellers;
+        } catch (error) {
+            console.error("Erro ao buscar vendedores:", error);
+            throw new Error('Erro ao buscar vendedores');
+        }
+    }
+
+    // Buscar vendedor por nome em uma sessão (retorna o primeiro encontrado)
+    async findSellerByName(sessionId, sellerName) {
+        try {
+            const seller = await this.prisma.seller.findFirst({
+                where: {
+                    sessionId,
+                    sellerName: {
+                        contains: sellerName,
+                        mode: 'insensitive',
+                    },
+                },
+            });
+            return seller;
+        } catch (error) {
+            console.error("Erro ao buscar vendedor por nome:", error);
+            throw new Error('Erro ao buscar vendedor por nome');
+        }
+    }
+}
+
+
+
+================================================================================
+Arquivo: ./src/core/person.mjs
+================================================================================
+
+import sellerJSON from "./getSeller.mjs";
+import SellerService from "../utils/vendorSearch.mjs";
+import { PrismaClient } from "@prisma/client";
+import dotenv from "dotenv";
+import { ChatGroq } from "@langchain/groq";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import MessageService from "./messageService.js";
+import VendorService from "./vendorService.js"; 
+
+// Carregar variáveis de ambiente do arquivo .env
+dotenv.config();
+
+// Inicializa o Prisma Client
+const prisma = new PrismaClient();
+const sellerService = new SellerService(prisma);
+const vendorService = new VendorService(prisma);
+const messageService = new MessageService();
+
+// Função: Gerar Features e Público-Alvo
+async function personAI(vendorId, mensagem, phoneNumber) {
+  try {
+    console.log("Iniciando busca de vendedores no banco de dados...");
+    const database = await sellerService.findSellers({
+      sessionId: vendorId,
+      sellerName: null,
+      product: null,
+      returnType: "sellers",
+    });
+    console.log("Dados do banco de dados retornados:", database);
+
+    const data = await sellerJSON(mensagem, database);
+
+    let vendorName = data?.matched?.sellerName || null;
+    const sellerProduct = data?.matched?.product || null;
+    console.log("Dados processados do cliente:", data);
+
+    // Verifica se o vendedor existe
+    const exists = await vendorService.checkVendorExists(vendorId, phoneNumber);
+
+    // Atualiza ou cria o vendedor com base nos dados
+    if (exists && vendorName) {
+      console.log(`Atualizando nome do vendedor para: ${vendorName}`);
+      await vendorService.updateVendorName(vendorId, vendorName);
+    } else if (vendorName && phoneNumber && vendorId) {
+      console.log("Criando novo vendedor...");
+      console.log("Dados do vendedor:", { vendorId, phoneNumber, vendorName });
+      await vendorService.createVendor(vendorId, phoneNumber=phoneNumber, vendorName);
+
+      console.error("Os campos obrigatórios estão ausentes. Dados recebidos:");
+      console.error({ vendorId, phoneNumber, vendorName });
+      throw new Error("Dados insuficientes para criar o vendedor.");
+    }
+
+    const vendorData = await vendorService.findVendorsBySession(vendorId, phoneNumber);
+    console.log("Dados do Vendedor:", vendorData);
+    
+    vendorName = vendorData && vendorData.length > 0 && !vendorName?vendorData.forEach(vendor => {vendor.vendorName }) : null;
+    
+
+    // Decide qual método usar para buscar os dados
+    const alldata = !vendorName && !sellerProduct
+      ?  await sellerService.findMostRecentSeller(vendorId) : await sellerService.findSellers({
+          sessionId: vendorId,
+          sellerName: vendorName,
+          product: sellerProduct,
+          returnType: "results",
+        });
+
+    // Verifica se há resultados
+    const [firstResult] = alldata?.results || alldata?.seller;
+    if (!firstResult) {
+      console.error("Nenhum resultado encontrado em alldata.results.");
+      return "Nenhum vendedor ou produto foi encontrado no banco de dados.";
+    }
+
+    const {
+      id,
+      sessionId,
+      sellerName,
+      product,
+      description,
+      image,
+      benefits,
+      createdAt,
+    } = firstResult;
+
+    const db = `Banco de dados:
+    ID: ${id};
+    Session ID: ${sessionId};
+    Seller Name: ${sellerName};
+    Product: ${product};
+    Description: ${description};
+    Image: ${image || "Nenhuma imagem disponível"};
+    Benefits: ${benefits};
+    Created At: ${createdAt};
+    `;
+
+    // Inicializa o modelo de linguagem e processa o prompt
+    const llm = new ChatGroq({
+      model: "llama3-groq-70b-8192-tool-use-preview",
+      temperature: 0.7,
+      maxRetries: 2,
+      apiKey: process.env.GROQ_API_KEY,
+    });
+
+    const prompt = ChatPromptTemplate.fromMessages([
+      [
+        "system",
+        "Você é um vendedor inteligente que assume a personalidade do vendedor responsável pelo produto mencionado pelo cliente. Ao identificar um produto ou vendedor no banco de dados, você adapta seu estilo de comunicação para refletir o comportamento e tom do vendedor associado. Responda de maneira amigável, personalizada e persuasiva, ajudando o cliente a tomar a melhor decisão. Aprimore o marketing: Adicione gatilhos como vantagens adicionais na mensagem.Inclua instruções simples de como finalizar a compra diretamente.",
+      ],
+      ["human", "Prompt do cliente: {prompt}. Banco de dados disponível: {database}."],
+    ]);
+
+    const chain = prompt.pipe(llm);
+
+    const response = await chain.invoke({
+      prompt: mensagem,
+      database: db,
+    });
+    try{
+    	await messageService.registerMessage(
+    	sessionId=vendorId, 
+    	sender="Client",
+    	content=mensagem,
+    	mediaUrl=null,
+    	phoneNumber=phoneNumber
+    	);
+    	await messageService.registerMessage(
+    	sessionId=vendorId, 
+    	sender="AI",
+    	content=response.content,
+    	mediaUrl=null,
+    	phoneNumber=phoneNumber
+    	);
+    	
+    	console.log("Mensagens salvas com sucesso!")
+    }catch(error){
+    	console.log("Erro ao salvar mensagens: ", error)
+    }
+
+    return response.content; // Retorna o texto com features e público-alvo
+    
+  } catch (error) {
+    console.error("Erro ao executar a função personAI:", error);
+    return "Ocorreu um erro ao processar sua solicitação. Tente novamente mais tarde.";
+  }
+}
+
+export default personAI;
+
+
+================================================================================
+Arquivo: ./src/core/messageService.js
+================================================================================
+
+import { PrismaClient } from '@prisma/client';
+
+class MessageService {
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+
+  // Função para registrar uma nova mensagem
+  async registerMessage({ sessionId, sender, content, mediaUrl, phoneNumber }) {
+    try {
+      await this.prisma.message.create({
+        data: {
+          sessionId,
+          sender,
+          content,
+          mediaUrl: mediaUrl || null,
+          phoneNumber,
+        },
+      });
+      console.info('Mensagem registrada!'); 
+    } catch (error) {
+      console.error('Erro ao registrar mensagem:', error);
+      throw error;
+    }
+  }
+
+  // Função para filtrar mensagens por sessionId e phoneNumber
+  async filterMessagesBySessionAndPhone(sessionId, phoneNumber) {
+    try {
+      const messages = await this.prisma.message.findMany({
+        where: {
+          sessionId,
+          phoneNumber,
+        },
+      });
+      console.log('Mensagens filtradas:', messages);
+      return messages;
+    } catch (error) {
+      console.error('Erro ao filtrar mensagens:', error);
+      throw error;
+    }
+  }
+
+  // Método para desconectar o Prisma Client (opcional, usado em scripts)
+  async disconnect() {
+    await this.prisma.$disconnect();
+  }
+}
+
+export default MessageService;
+
+
+================================================================================
+Arquivo: ./src/core/getSeller.mjs
+================================================================================
+
+import { ChatGroq } from '@langchain/groq'; 
+import dotenv from 'dotenv'; 
+
+import buildMessages from '../utils/buildMessage.js';  
+ 
+// Carregar variáveis de ambiente do arquivo .env
+dotenv.config();
+
+// Configuração do modelo
+const llm = new ChatGroq({
+  model: "mixtral-8x7b-32768",
+  temperature: 0,
+  maxTokens: undefined,
+  maxRetries: 2,
+  apiKey: process.env.GROQ_API_KEY,
+});
+
+async function sellerJSON(userPrompt, database) {
+  const system =
+    "Você é um analisador de texto que verifica se o prompt do usuário contém nomes de vendedores ou produtos presentes no banco de dados. Caso encontre correspondência apenas no produto, deve adicionar no seu JSON o nome do vendedor do banco de dados. Retorne o resultado em JSON no formato: { found: boolean, matched: { sellerName: string | null, product: string | null } }.";
+
+  try {
+    // Construção das mensagens
+    const mensagens = await buildMessages(system, userPrompt, database);
+
+    // Vincular o formato de resposta
+    const llmComFormatoResposta = llm.bind({
+      response_format: { type: "json_object" },
+    });
+
+    // Chamada ao modelo
+    const mensagemVinculadaIA = await llmComFormatoResposta.invoke(mensagens);
+
+    // Analise o conteúdo como JSON
+    const data = JSON.parse(mensagemVinculadaIA.content);
+    
+
+    return data;
+  } catch (error) {
+    console.error("Erro ao executar o modelo:", error);
+    return null; // Retorne null em caso de erro
+  }
+}
+
+export default sellerJSON;
+
+ 
+
+
+================================================================================
+Arquivo: ./src/core/vendorService.js
+================================================================================
+
+import { PrismaClient } from '@prisma/client';
+
+class VendorService {
+  constructor() {
+    this.prisma = new PrismaClient();
+  }
+
+  // Atualizar nome do vendedor
+  async updateVendorName(vendorId, newName) {
+    try {
+      // Encontre o vendedor com o sessionId
+    const vendor = await this.prisma.vendor.findFirst({
+      where: {sessionId: vendorId },
+    });
+
+    if (!vendor) {
+      throw new Error("Vendedor não encontrado.");
+    }
+
+      await this.prisma.vendor.update({
+        where: { id: vendor.id },
+        data: {
+          vendorName: newName, // Atualiza o nome do vendedor
+        },
+      });
+      console.info('Nome do vendedor atualizado!'); 
+    } catch (error) {
+      console.error('Erro ao atualizar o nome do vendedor:', error);
+      throw error;
+    }
+  }
+
+  // Criar um novo vendedor
+  async createVendor(vendorId, phoneNumber, vendorName) {
+    console.log("Dados do vendedor:", { vendorId, phoneNumber, vendorName }); 
+  
+    try {
+      await this.prisma.vendor.create({
+        data: {
+          sessionId: vendorId,
+          phoneNumber,
+          vendorName,
+        },
+      });
+      console.info('Vendedor criado com sucesso:', vendorName);
+    } catch (error) {
+      console.error('Erro ao criar vendedor:', error);
+      throw error;
+    }
+  }
+  
+  
+  
+
+  // Buscar vendedores por sessionId
+  async findVendorsBySession(sessionId, phoneNumber) {
+    try {
+      const vendors = await this.prisma.vendor.findMany({
+        where: {
+          sessionId,
+          phoneNumber,
+        },
+      });
+      console.info('Vendedor encontrado!',);
+      return vendors;
+    } catch (error) {
+      console.error('Erro ao buscar vendedor!', error);
+      throw error;
+    }
+  }
+
+  // Verificar se existe um vendedor na sessão com o número de telefone
+  async checkVendorExists(sessionId, phoneNumber) {
+    try {
+      const existingVendor = await this.prisma.vendor.findFirst({
+        where: {
+          sessionId,
+          phoneNumber,
+        },
+      });
+      return !!existingVendor; // Retorna true se encontrar, false caso contrário
+    } catch (error) {
+      console.error('Erro ao verificar vendedor:', error);
+      throw error;
+    }
+  } 
+  
+  // Desconectar o Prisma Client
+  async disconnect() {
+    await this.prisma.$disconnect();
+  }
+}
+
+export default VendorService;
+
+
+================================================================================
+Arquivo: ./src/log/logger.mjs
+================================================================================
+
+import winston from "winston";
+
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.printf(({ level, message }) => `${level}: ${message}`)
+  ),
+  transports: [new winston.transports.Console()],
+});
+
+export default logger;
+
 
 
 

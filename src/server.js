@@ -79,7 +79,10 @@ class App {
       'DATABASE_URL',
       'JWT_SECRET',
       'JWT_EXPIRES_IN',
-      'CORS_ORIGIN'
+      'CORS_ORIGIN',
+      'GROQ_API_KEY',
+      'GROQ_MODEL',
+      
     ];
 
     for (const envVar of requiredEnvVars) {

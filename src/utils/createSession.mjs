@@ -71,27 +71,17 @@ export async function createSession(sessionId, userId, sessions, io) {
     // Evento: Cliente pronto
     client.on('ready', async () => {
         console.log(`Cliente ${sessionId} está pronto.`);
-        sessionState.ready = true;
-        sessionState.qr = null;
-        sessionState.status = 'CONNECTED';
-        await syncSessionState(sessionState);
         io.emit(`ready-${sessionId}`);
     });
 
     // Evento: Cliente autenticado
     client.on('authenticated', async () => {
         console.log(`Sessão ${sessionId} autenticada.`);
-        sessionState.status = 'AUTHENTICATED';
-        await syncSessionState(sessionState);
         io.emit(`authenticated-${sessionId}`);
     });
 
     // Evento: Falha de autenticação
     client.on('auth_failure', async (error) => {
-        console.error(`Falha de autenticação na sessão ${sessionId}:`, error.message);
-        sessionState.status = 'AUTH_FAILURE';
-        sessionState.error = error.message;
-        await syncSessionState(sessionState);
         io.emit(`auth-failure-${sessionId}`, { error: error.message });
     });
 
@@ -122,25 +112,9 @@ export async function createSession(sessionId, userId, sessions, io) {
     // Evento: Cliente desconectado
     client.on('disconnected', async (reason) => {
         console.log(`Sessão ${sessionId} desconectada. Motivo: ${reason}`);
-        sessionState.ready = false;
-        sessionState.qr = null;
-        sessionState.status = 'DISCONNECTED';
-        await syncSessionState(sessionState);
-        sessions.delete(sessionId);
+        
         io.emit(`disconnected-${sessionId}`, { reason });
     });
 
-    // Inicialização do cliente
-    try {
-        await client.initialize();
-        sessionState.status = 'INITIALIZED';
-        await syncSessionState(sessionState);
-    } catch (error) {
-        console.error(`Erro ao inicializar a sessão ${sessionId}:`, error);
-        sessionState.status = 'ERROR';
-        sessionState.error = error.message;
-        await syncSessionState(sessionState);
-        sessions.delete(sessionId);
-    }
 }
 

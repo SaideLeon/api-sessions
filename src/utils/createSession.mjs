@@ -59,30 +59,12 @@ export async function createSession(sessionId, userId, sessions, io) {
             restartOnAuthFail: true
     });
 
-    // Estado inicial da sessão
-   
-    /**
-     * Sincroniza o estado da sessão com o banco de dados.
-     */
-    async function syncSessionState(state) {
-        try {
-            await prisma.session.upsert({
-                where: { sessionId },
-                update: { ...state, updatedAt: new Date() },
-                create: { sessionId, userId, ...state, createdAt: new Date() },
-            });
-        } catch (error) {
-            console.error(`Erro ao sincronizar estado da sessão ${sessionId}:`, error);
-        }
-    }
 
     // Evento: QR Code gerado
     client.on('qr', async (qr) => {
         console.log(`QR Code gerado para a sessão ${sessionId}`);
         const qrCodeImage = await qrcode.toDataURL(qr);
-        sessionState.qr = qrCodeImage;
-        sessionState.status = 'WAITING_QR';
-        await syncSessionState(sessionState);
+        
         io.emit(`qr-${sessionId}`, qrCodeImage);
     });
 

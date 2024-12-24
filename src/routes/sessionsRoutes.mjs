@@ -5,178 +5,97 @@ import Joi from 'joi';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middlewares/auth.mjs';
 import { createSession } from '../utils/createSession.mjs';
-import { rateLimit } from 'express-rate-limit';
 
 const prisma = new PrismaClient();
 const router = express.Router();
 
-// Rate limiting específico para criação de sessões
-const sessionLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 5, // limite por IP
-    message: 'Muitas tentativas de criar sessão. Tente novamente mais tarde.'
-});
-
-// Validação de schema
+// Validação do schema de sessão
 const sessionSchema = Joi.object({
-    sessionId: Joi.string().required().min(3).max(50),
-    userId: Joi.number().integer().required(),
+  sessionId: Joi.string().required(),
+  userId: Joi.number().integer().required(),
 });
 
-// Middleware de validação de sessão
-async function validateSession(req, res, next) {
-    try {
-        const session = await prisma.session.findUnique({
-            where: { sessionId: req.params.sessionId }
-        });
-
-        if (!session) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'Sessão não encontrada'
-            });
-        }
-
-        req.session = session;
-        next();
-    } catch (error) {
-        next(error);
-    }
-}
-
+/**
+ * Criar uma nova sessão para um usuário
+ */
 export const createNewSession = (io, sessions) =>
-    router.post('/create', sessionLimiter, async (req, res) => {
-        try {
-            const { error, value } = sessionSchema.validate(req.body);
-            if (error) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: error.details[0].message
-                });
-            }
+  router.post('/create', async (req, res) => {
+    const { error } = sessionSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
-            const { sessionId, userId } = value;
+    const { sessionId, userId } = req.body;
 
-            // Verifica se já existe uma sessão ativa
-            const existingSession = sessions.get(sessionId);
-            if (existingSession) {
-                return res.status(409).json({
-                    status: 'error',
-                    message: 'Sessão já existe',
-                    sessionStatus: existingSession.state.status
-                });
-            }
+    try {
+      if (!sessionId || !userId) {
+        return res.status(400).json({ error: 'sessionId e userId são obrigatórios.' });
+      }
 
-            // Verifica se o usuário existe
-            const user = await prisma.user.findUnique({
-                where: { id: userId }
-            });
+      if (sessions[sessionId]) {
+        return res.status(400).json({ error: 'Sessão já existe.' });
+      }
 
-            if (!user) {
-                return res.status(404).json({
-                    status: 'error',
-                    message: 'Usuário não encontrado'
-                });
-            }
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        return res.status(404).json({ error: 'Usuário não encontrado.' });
+      }
 
-            // Cria a sessão
-            const sessionManager = await createSession(sessionId, userId, sessions, io);
-            
-            res.status(201).json({
-                status: 'success',
-                message: 'Sessão criada com sucesso',
-                sessionStatus: sessionManager.state.status
-            });
-
-        } catch (error) {
-            console.error('Erro ao criar sessão:', error);
-            res.status(500).json({
-                status: 'error',
-                message: 'Erro interno ao criar sessão',
-                error: error.message
-            });
-        }
-    });
-
-export const getQrCode = (sessions) =>
-    router.get('/get-qr/:sessionId', validateSession, async (req, res) => {
-        try {
-            const sessionManager = sessions.get(req.params.sessionId);
-
-            if (!sessionManager) {
-                return res.status(404).json({
-                    status: 'error',
-                    message: 'Sessão não encontrada'
-                });
-            }
-
-            if (sessionManager.state.ready) {
-                return res.status(200).json({
-                    status: 'success',
-                    message: 'Sessão já está conectada'
-                });
-            }
-
-            if (sessionManager.state.status === 'INITIALIZING') {
-                return res.status(202).json({
-                    status: 'pending',
-                    message: 'Sessão está inicializando'
-                });
-            }
-
-            if (!sessionManager.state.qr) {
-                return res.status(202).json({
-                    status: 'pending',
-                    message: 'QR Code ainda não gerado'
-                });
-            }
-
-            res.status(200).json({
-                status: 'success',
-                qrCode: sessionManager.state.qr
-            });
-
-        } catch (error) {
-            console.error('Erro ao obter QR Code:', error);
-            res.status(500).json({
-                status: 'error',
-                message: 'Erro ao obter QR Code',
-                error: error.message
-            });
-        }
-    });
-
-export const getUserSessions = router.get(
-    '/user-sessions/:userId',
-    authenticate,
-    async (req, res) => {
-        try {
-            const userId = parseInt(req.params.userId, 10);
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'ID de usuário inválido'
-                });
-            }
-
-            const userSessions = await prisma.session.findMany({
-                where: { userId },
-                orderBy: { createdAt: 'desc' }
-            });
-
-            res.status(200).json({
-                status: 'success',
-                data: userSessions
-            });
-        } catch (error) {
-            console.error('Erro ao buscar sessões:', error);
-            res.status(500).json({
-                status: 'error',
-                message: 'Erro ao buscar sessões',
-                error: error.message
-            });
-        }
+      // Criar sessão usando a função utilitária
+      createSession(sessionId, userId, sessions, io, false);
+      res.status(200).json({ message: 'Sessão criada. Aguarde o QR code.' });
+    } catch (err) {
+      console.error('Erro ao criar sessão:', err);
+      res.status(500).json({ error: 'Erro ao criar sessão.', details: err.message });
     }
-);
+  });
 
-export default router;
+/**
+ * Obter todas as sessões de um usuário
+ */
+export const getUserSessions = router.get('/user-sessions/:userId', authenticate, async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const userIdParsed = parseInt(userId, 10);
+    if (isNaN(userIdParsed)) {
+      return res.status(400).json({ error: 'ID de usuário inválido.' });
+    }
+
+    const userSessions = await prisma.session.findMany({
+      where: { userId: userIdParsed },
+    });
+    res.status(200).json(userSessions);
+  } catch (error) {
+    console.error('Erro ao buscar sessões:', error);
+    res.status(500).json({ error: 'Erro ao buscar sessões.' });
+  }
+});
+
+/**
+ * Obter QR Code de uma sessão
+ */
+export const getQrCode = (sessions) =>
+  router.get('/get-qr/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+
+    try {
+      if (!sessions[sessionId]) {
+        return res.status(404).json({ error: 'Sessão não encontrada.' });
+      }
+
+      const { qr, ready } = sessions[sessionId];
+      if (ready) {
+        return res.status(400).json({ error: 'Sessão já conectada.' });
+      }
+
+      if (!qr) {
+        return res.status(400).json({ error: 'QR Code ainda não gerado. Tente novamente.' });
+      }
+
+      const qrImage = await qrcode.toDataURL(qr);
+      res.status(200).json({ qrCode: qrImage });
+    } catch (err) {
+      console.error('Erro ao gerar QR Code:', err);
+      res.status(500).json({ error: 'Erro ao gerar QR Code.', details: err.message });
+    }
+  });
+ 

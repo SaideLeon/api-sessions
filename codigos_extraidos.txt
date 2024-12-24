@@ -1932,108 +1932,188 @@ export default router;
 Arquivo: ./src/routes/sessionsRoutes.mjs
 ================================================================================
 
-// Importação de módulos
+
+// sessionsRoutes.mjs - Atualização Completa
 import express from 'express';
 import Joi from 'joi';
-import qrcode from 'qrcode';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middlewares/auth.mjs';
 import { createSession } from '../utils/createSession.mjs';
+import { rateLimit } from 'express-rate-limit';
 
 const prisma = new PrismaClient();
 const router = express.Router();
 
-// Validação do schema de sessão
+// Rate limiting específico para criação de sessões
+const sessionLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 5, // limite por IP
+    message: 'Muitas tentativas de criar sessão. Tente novamente mais tarde.'
+});
+
+// Validação de schema
 const sessionSchema = Joi.object({
-  sessionId: Joi.string().required(),
-  userId: Joi.number().integer().required(),
+    sessionId: Joi.string().required().min(3).max(50),
+    userId: Joi.number().integer().required(),
 });
 
-/**
- * Criar uma nova sessão para um usuário
- */
+// Middleware de validação de sessão
+async function validateSession(req, res, next) {
+    try {
+        const session = await prisma.session.findUnique({
+            where: { sessionId: req.params.sessionId }
+        });
+
+        if (!session) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'Sessão não encontrada'
+            });
+        }
+
+        req.session = session;
+        next();
+    } catch (error) {
+        next(error);
+    }
+}
+
 export const createNewSession = (io, sessions) =>
-  router.post('/create', async (req, res) => {
-    const { error } = sessionSchema.validate(req.body);
-    if (error) return res.status(400).json({ error: error.details[0].message });
+    router.post('/create', sessionLimiter, async (req, res) => {
+        try {
+            const { error, value } = sessionSchema.validate(req.body);
+            if (error) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: error.details[0].message
+                });
+            }
 
-    const { sessionId, userId } = req.body;
+            const { sessionId, userId } = value;
 
-    try {
-      if (!sessionId || !userId) {
-        return res.status(400).json({ error: 'sessionId e userId são obrigatórios.' });
-      }
+            // Verifica se já existe uma sessão ativa
+            const existingSession = sessions.get(sessionId);
+            if (existingSession) {
+                return res.status(409).json({
+                    status: 'error',
+                    message: 'Sessão já existe',
+                    sessionStatus: existingSession.state.status
+                });
+            }
 
-      if (sessions[sessionId]) {
-        return res.status(400).json({ error: 'Sessão já existe.' });
-      }
+            // Verifica se o usuário existe
+            const user = await prisma.user.findUnique({
+                where: { id: userId }
+            });
 
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user) {
-        return res.status(404).json({ error: 'Usuário não encontrado.' });
-      }
+            if (!user) {
+                return res.status(404).json({
+                    status: 'error',
+                    message: 'Usuário não encontrado'
+                });
+            }
 
-      // Criar sessão usando a função utilitária
-      createSession(sessionId, userId, sessions, io, false);
-      res.status(200).json({ message: 'Sessão criada. Aguarde o QR code.' });
-    } catch (err) {
-      console.error('Erro ao criar sessão:', err);
-      res.status(500).json({ error: 'Erro ao criar sessão.', details: err.message });
-    }
-  });
+            // Cria a sessão
+            const sessionManager = await createSession(sessionId, userId, sessions, io);
+            
+            res.status(201).json({
+                status: 'success',
+                message: 'Sessão criada com sucesso',
+                sessionStatus: sessionManager.state.status
+            });
 
-/**
- * Obter todas as sessões de um usuário
- */
-export const getUserSessions = router.get('/user-sessions/:userId', authenticate, async (req, res) => {
-  const { userId } = req.params;
-
-  try {
-    const userIdParsed = parseInt(userId, 10);
-    if (isNaN(userIdParsed)) {
-      return res.status(400).json({ error: 'ID de usuário inválido.' });
-    }
-
-    const userSessions = await prisma.session.findMany({
-      where: { userId: userIdParsed },
+        } catch (error) {
+            console.error('Erro ao criar sessão:', error);
+            res.status(500).json({
+                status: 'error',
+                message: 'Erro interno ao criar sessão',
+                error: error.message
+            });
+        }
     });
-    res.status(200).json(userSessions);
-  } catch (error) {
-    console.error('Erro ao buscar sessões:', error);
-    res.status(500).json({ error: 'Erro ao buscar sessões.' });
-  }
-});
 
-/**
- * Obter QR Code de uma sessão
- */
 export const getQrCode = (sessions) =>
-  router.get('/get-qr/:sessionId', async (req, res) => {
-    const { sessionId } = req.params;
+    router.get('/get-qr/:sessionId', validateSession, async (req, res) => {
+        try {
+            const sessionManager = sessions.get(req.params.sessionId);
 
-    try {
-      if (!sessions[sessionId]) {
-        return res.status(404).json({ error: 'Sessão não encontrada.' });
-      }
+            if (!sessionManager) {
+                return res.status(404).json({
+                    status: 'error',
+                    message: 'Sessão não encontrada'
+                });
+            }
 
-      const { qr, ready } = sessions[sessionId];
-      if (ready) {
-        return res.status(400).json({ error: 'Sessão já conectada.' });
-      }
+            if (sessionManager.state.ready) {
+                return res.status(200).json({
+                    status: 'success',
+                    message: 'Sessão já está conectada'
+                });
+            }
 
-      if (!qr) {
-        return res.status(400).json({ error: 'QR Code ainda não gerado. Tente novamente.' });
-      }
+            if (sessionManager.state.status === 'INITIALIZING') {
+                return res.status(202).json({
+                    status: 'pending',
+                    message: 'Sessão está inicializando'
+                });
+            }
 
-      const qrImage = await qrcode.toDataURL(qr);
-      res.status(200).json({ qrCode: qrImage });
-    } catch (err) {
-      console.error('Erro ao gerar QR Code:', err);
-      res.status(500).json({ error: 'Erro ao gerar QR Code.', details: err.message });
+            if (!sessionManager.state.qr) {
+                return res.status(202).json({
+                    status: 'pending',
+                    message: 'QR Code ainda não gerado'
+                });
+            }
+
+            res.status(200).json({
+                status: 'success',
+                qrCode: sessionManager.state.qr
+            });
+
+        } catch (error) {
+            console.error('Erro ao obter QR Code:', error);
+            res.status(500).json({
+                status: 'error',
+                message: 'Erro ao obter QR Code',
+                error: error.message
+            });
+        }
+    });
+
+export const getUserSessions = router.get(
+    '/user-sessions/:userId',
+    authenticate,
+    async (req, res) => {
+        try {
+            const userId = parseInt(req.params.userId, 10);
+            if (isNaN(userId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'ID de usuário inválido'
+                });
+            }
+
+            const userSessions = await prisma.session.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'desc' }
+            });
+
+            res.status(200).json({
+                status: 'success',
+                data: userSessions
+            });
+        } catch (error) {
+            console.error('Erro ao buscar sessões:', error);
+            res.status(500).json({
+                status: 'error',
+                message: 'Erro ao buscar sessões',
+                error: error.message
+            });
+        }
     }
-  });
- 
+);
 
+export default router;
 
 ================================================================================
 Arquivo: ./src/utils/hashPassword.mjs
@@ -2122,99 +2202,197 @@ export const generateToken = (userId) => {
 Arquivo: ./src/utils/createSession.mjs
 ================================================================================
 
-// Importações
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
-import personAI from "../core/person.mjs";
-
-
-import Tools from './tools.mjs';
 import { PrismaClient } from '@prisma/client';
-import { Server } from 'socket.io';
+import qrcode from 'qrcode';
+import { createLogger, format, transports } from 'winston';
 
-// Inicializações
-const tools = new Tools();
 const prisma = new PrismaClient();
+const logger = createLogger({
+    level: 'info',
+    format: format.combine(
+        format.timestamp(),
+        format.json()
+    ),
+    transports: [
+        new transports.File({ filename: 'error.log', level: 'error' }),
+        new transports.File({ filename: 'combined.log' })
+    ]
+});
 
-/**
- * Cria e gerencia uma sessão do WhatsApp
- * @param {string} sessionId - ID único da sessão
- * @param {string} userId - ID do usuário associado
- * @param {Object} sessions - Objeto contendo as sessões ativas
- * @param {Server} io - Instância do Socket.IO para comunicação
- */
-export async function createSession(sessionId, userId, sessions, io) {
-    const client = new Client({
-        authStrategy: new LocalAuth({ clientId: sessionId }),
-    });
+// Configuração simplificada do Puppeteer sem suporte específico para iOS
+const puppeteerConfig = {
+    args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process'
+    ],
+    headless: true,
+    defaultViewport: null, // Remove configurações específicas de viewport
+    timeout: 60000
+};
 
-    // Evento de QR Code gerado
-    client.on('qr', async (qr) => {
-        console.log(`QR code gerado para a sessão ${sessionId}`);
-        sessions[sessionId] = { ...sessions[sessionId], qr };
-        io.emit(`qr-${sessionId}`, qr);
-    });
+class SessionManager {
+    constructor(sessionId, userId) {
+        this.sessionId = sessionId;
+        this.userId = userId;
+        this.state = {
+            status: 'INITIALIZING',
+            qr: null,
+            ready: false,
+            error: null,
+            retryCount: 0,
+            lastActivity: Date.now()
+        };
+        this.client = null;
+    }
 
-    // Evento quando o cliente está pronto
-    client.on('ready', async () => {
-        console.log(`Cliente ${sessionId} está pronto!`);
-        sessions[sessionId] = { ...sessions[sessionId], ready: true };
+    updateState(newState) {
+        this.state = {
+            ...this.state,
+            ...newState,
+            lastActivity: Date.now()
+        };
+        return this.state;
+    }
 
+    async cleanup() {
         try {
-            await prisma.session.upsert({
-                where: { sessionId },
-                update: { createdAt: new Date() },
-                create: { sessionId, userId },
+            if (this.client) {
+                await this.client.destroy();
+                this.client = null;
+            }
+            this.updateState({
+                status: 'DISCONNECTED',
+                ready: false,
+                qr: null
             });
-            io.emit(`ready-${sessionId}`);
         } catch (error) {
-            console.error(`Erro ao salvar a sessão ${sessionId} no banco de dados:`, error);
+            logger.error(`Erro ao limpar sessão ${this.sessionId}:`, error);
         }
-    });
-
-    // Evento para mensagens recebidas
-    client.on('message', async (message) => {
-        if (message.fromMe) return;
-
-        const userId = message.from;
-        if (userId.includes('status')) return; // Ignora mensagens de status
-
-        try {
-            let resposta;
-
-            if (message.hasMedia) {
-                const mediaData = await tools.baixarMidia(message);
-                resposta = mediaData
-                    ? await tools.processarMedia(userId, mediaData, sessionId)
-                    : "Não consegui baixar a mídia.";
-            } else {
-                resposta = await tools.processarTexto(userId, message.body, sessionId);
-            }
-
-            if (resposta) {
-                await message.reply(resposta.replace(/\*\*/g, '*'));
-            }
-        } catch (error) {
-            console.error(`Erro ao processar mensagem para o usuário ${userId}:`, error);
-        }
-    });
-
-    // Evento quando o cliente é desconectado
-    client.on('disconnected', () => {
-        console.log(`Cliente ${sessionId} desconectado.`); 
-        io.emit(`disconnected-${sessionId}`);
-    });
-
-    // Inicialização do cliente
-    try {
-        await client.initialize();
-        sessions[sessionId] = { client, qr: null, ready: false };
-    } catch (error) {
-        console.error(`Erro ao inicializar o cliente para a sessão ${sessionId}:`, error);
-        delete sessions[sessionId];
     }
 }
 
+async function initializeWithRetry(sessionManager, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            await sessionManager.client.initialize();
+            return true;
+        } catch (error) {
+            logger.error(`Tentativa ${i + 1}/${maxRetries} falhou para sessão ${sessionManager.sessionId}:`, error);
+            
+            if (i === maxRetries - 1) {
+                throw error;
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+    }
+    return false;
+}
+
+async function syncSessionState(sessionManager) {
+    try {
+        await prisma.session.upsert({
+            where: { sessionId: sessionManager.sessionId },
+            update: {
+                status: sessionManager.state.status,
+                lastActivity: new Date(sessionManager.state.lastActivity),
+                errorMessage: sessionManager.state.error,
+                updatedAt: new Date()
+            },
+            create: {
+                sessionId: sessionManager.sessionId,
+                userId: sessionManager.userId,
+                status: sessionManager.state.status,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            }
+        });
+    } catch (error) {
+        logger.error(`Erro ao sincronizar estado da sessão ${sessionManager.sessionId}:`, error);
+    }
+}
+
+export async function createSession(sessionId, userId, sessions, io) {
+    logger.info(`Iniciando criação de sessão para ${sessionId}`);
+
+    const sessionManager = new SessionManager(sessionId, userId);
+    sessions.set(sessionId, sessionManager);
+
+    try {
+        const client = new Client({
+            authStrategy: new LocalAuth({ clientId: sessionId }),
+            puppeteer: puppeteerConfig,
+            qrMaxRetries: 5,
+            restartOnAuthFail: true
+        });
+
+        sessionManager.client = client;
+
+        client.on('qr', async (qr) => {
+            try {
+                const qrImage = await qrcode.toDataURL(qr);
+                sessionManager.updateState({
+                    status: 'WAITING_QR',
+                    qr: qrImage
+                });
+                await syncSessionState(sessionManager);
+                io.emit(`qr-${sessionId}`, qrImage);
+            } catch (error) {
+                logger.error(`Erro ao processar QR code para ${sessionId}:`, error);
+            }
+        });
+
+        client.on('ready', async () => {
+            sessionManager.updateState({
+                status: 'CONNECTED',
+                ready: true,
+                qr: null
+            });
+            await syncSessionState(sessionManager);
+            io.emit(`ready-${sessionId}`);
+        });
+
+        client.on('authenticated', async () => {
+            sessionManager.updateState({
+                status: 'AUTHENTICATED',
+                qr: null
+            });
+            await syncSessionState(sessionManager);
+            io.emit(`authenticated-${sessionId}`);
+        });
+
+        client.on('auth_failure', async (error) => {
+            sessionManager.updateState({
+                status: 'AUTH_FAILURE',
+                error: error.message
+            });
+            await syncSessionState(sessionManager);
+            io.emit(`auth-failure-${sessionId}`, { error: error.message });
+        });
+
+        client.on('disconnected', async (reason) => {
+            await sessionManager.cleanup();
+            await syncSessionState(sessionManager);
+            io.emit(`disconnected-${sessionId}`, { reason });
+        });
+
+        await initializeWithRetry(sessionManager);
+        return sessionManager;
+
+    } catch (error) {
+        logger.error(`Erro fatal ao criar sessão ${sessionId}:`, error);
+        sessions.delete(sessionId);
+        throw error;
+    }
+}
 
 ================================================================================
 Arquivo: ./src/utils/tools.mjs
@@ -2267,7 +2445,7 @@ Arquivo: ./src/utils/initSession.mjs
 // Importações
 import { PrismaClient } from '@prisma/client';
 import { createSession } from './createSession.mjs';
-
+import logger from '../log/logger.mjs';
 // Inicialização do Prisma
 const prisma = new PrismaClient();
 
@@ -2275,21 +2453,52 @@ const prisma = new PrismaClient();
  * Inicializa todas as sessões salvas no banco de dados
  * @param {Object} sessions - Objeto que armazena sessões ativas
  * @param {import('socket.io').Server} io - Instância do Socket.IO
- */
-async function initSessions(sessions, io) {
-    try {
-        // Buscando todas as sessões no banco de dados
-        const sessionsFromDB = await prisma.session.findMany();
+ */// initSessions.mjs - Correção da inicialização
+async function initSessions(io, sessions) {
+  try {
+    const activeSessions = await prisma.session.findMany({
+      where: {
+        status: 'ACTIVE'
+      }
+    });
 
-        // Iterando sobre as sessões e recriando-as
-        sessionsFromDB.forEach(session => {
-            createSession(session.sessionId, session.userId, sessions, io, true);
+    for (const session of activeSessions) {
+      try {
+        const sessionManager = await createSession(
+          session.sessionId,
+          session.userId,
+          sessions,
+          io
+        );
+        
+        // Agora usando Map.set
+        sessions.set(session.sessionId, sessionManager);
+        
+      } catch (error) {
+        logger.error(
+          `Erro ao reinicializar sessão ${session.sessionId}:`,
+          error
+        );
+        
+        await prisma.session.update({
+          where: { sessionId: session.sessionId },
+          data: { 
+            status: 'ERROR',
+            errorMessage: error.message
+          }
         });
-    } catch (error) {
-        console.error("Erro ao buscar sessões:", error);
+      }
     }
+
+    logger.info(`${activeSessions.length} sessões reinicializadas`);
+  } catch (error) {
+    logger.error('Erro ao inicializar sessões:', error);
+    throw error;
+  }
 }
+
 export default initSessions;
+
 
 ================================================================================
 Arquivo: ./src/utils/vendorSearch.mjs

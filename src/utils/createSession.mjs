@@ -3,8 +3,8 @@ const { Client, LocalAuth } = pkg;
 import { PrismaClient } from '@prisma/client';
 import qrcode from 'qrcode';
 import { createLogger, format, transports } from 'winston';
+import Tools from './tools.mjs';
 
-const prisma = new PrismaClient();
 const logger = createLogger({
     level: 'info',
     format: format.combine(
@@ -16,8 +16,6 @@ const logger = createLogger({
         new transports.File({ filename: 'combined.log' })
     ]
 });
-
-// Configuração simplificada do Puppeteer sem suporte específico para iOS
 const puppeteerConfig = {
     args: [
         '--no-sandbox',
@@ -34,158 +32,133 @@ const puppeteerConfig = {
     timeout: 60000
 };
 
-class SessionManager {
-    constructor(sessionId, userId) {
-        this.sessionId = sessionId;
-        this.userId = userId;
-        this.state = {
-            status: 'INITIALIZING',
-            qr: null,
-            ready: false,
-            error: null,
-            retryCount: 0,
-            lastActivity: Date.now()
-        };
-        this.client = null;
-    }
 
-    updateState(newState) {
-        this.state = {
-            ...this.state,
-            ...newState,
-            lastActivity: Date.now()
-        };
-        return this.state;
-    }
 
-    async cleanup() {
-        try {
-            if (this.client) {
-                await this.client.destroy();
-                this.client = null;
-            }
-            this.updateState({
-                status: 'DISCONNECTED',
-                ready: false,
-                qr: null
-            });
-        } catch (error) {
-            logger.error(`Erro ao limpar sessão ${this.sessionId}:`, error);
-        }
-    }
-}
+const tools = new Tools();
+const prisma = new PrismaClient();
 
-async function initializeWithRetry(sessionManager, maxRetries = 3) {
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            await sessionManager.client.initialize();
-            return true;
-        } catch (error) {
-            logger.error(`Tentativa ${i + 1}/${maxRetries} falhou para sessão ${sessionManager.sessionId}:`, error);
-            
-            if (i === maxRetries - 1) {
-                throw error;
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-    }
-    return false;
-}
-
-async function syncSessionState(sessionManager) {
-    try {
-        await prisma.session.upsert({
-            where: { sessionId: sessionManager.sessionId },
-            update: {
-                status: sessionManager.state.status,
-                lastActivity: new Date(sessionManager.state.lastActivity),
-                errorMessage: sessionManager.state.error,
-                updatedAt: new Date()
-            },
-            create: {
-                sessionId: sessionManager.sessionId,
-                userId: sessionManager.userId,
-                status: sessionManager.state.status,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            }
-        });
-    } catch (error) {
-        logger.error(`Erro ao sincronizar estado da sessão ${sessionManager.sessionId}:`, error);
-    }
-}
-
+/**
+ * Cria e gerencia uma sessão do WhatsApp
+ * @param {string} sessionId - ID único da sessão.
+ * @param {string} userId - ID do usuário associado.
+ * @param {Map} sessions - Objeto contendo as sessões ativas.
+ * @param {Server} io - Instância do Socket.IO para comunicação em tempo real.
+ */
 export async function createSession(sessionId, userId, sessions, io) {
-    logger.info(`Iniciando criação de sessão para ${sessionId}`);
+    if (sessions.has(sessionId)) {
+        console.log(`Sessão ${sessionId} já está ativa.`);
+        return sessions.get(sessionId);
+    }
 
-    const sessionManager = new SessionManager(sessionId, userId);
-    sessions.set(sessionId, sessionManager);
-
-    try {
-        const client = new Client({
-            authStrategy: new LocalAuth({ clientId: sessionId }),
-            puppeteer: puppeteerConfig,
+    console.log(`Iniciando nova sessão para ${sessionId}`);
+    const client = new Client({
+        authStrategy: new LocalAuth({ clientId: sessionId }),
+      
+         puppeteer: puppeteerConfig,
             qrMaxRetries: 5,
             restartOnAuthFail: true
-        });
+    });
 
-        sessionManager.client = client;
+    // Estado inicial da sessão
+   
+    /**
+     * Sincroniza o estado da sessão com o banco de dados.
+     */
+    async function syncSessionState(state) {
+        try {
+            await prisma.session.upsert({
+                where: { sessionId },
+                update: { ...state, updatedAt: new Date() },
+                create: { sessionId, userId, ...state, createdAt: new Date() },
+            });
+        } catch (error) {
+            console.error(`Erro ao sincronizar estado da sessão ${sessionId}:`, error);
+        }
+    }
 
-        client.on('qr', async (qr) => {
-            try {
-                const qrImage = await qrcode.toDataURL(qr);
-                sessionManager.updateState({
-                    status: 'WAITING_QR',
-                    qr: qrImage
-                });
-                await syncSessionState(sessionManager);
-                io.emit(`qr-${sessionId}`, qrImage);
-            } catch (error) {
-                logger.error(`Erro ao processar QR code para ${sessionId}:`, error);
+    // Evento: QR Code gerado
+    client.on('qr', async (qr) => {
+        console.log(`QR Code gerado para a sessão ${sessionId}`);
+        const qrCodeImage = await qrcode.toDataURL(qr);
+        sessionState.qr = qrCodeImage;
+        sessionState.status = 'WAITING_QR';
+        await syncSessionState(sessionState);
+        io.emit(`qr-${sessionId}`, qrCodeImage);
+    });
+
+    // Evento: Cliente pronto
+    client.on('ready', async () => {
+        console.log(`Cliente ${sessionId} está pronto.`);
+        sessionState.ready = true;
+        sessionState.qr = null;
+        sessionState.status = 'CONNECTED';
+        await syncSessionState(sessionState);
+        io.emit(`ready-${sessionId}`);
+    });
+
+    // Evento: Cliente autenticado
+    client.on('authenticated', async () => {
+        console.log(`Sessão ${sessionId} autenticada.`);
+        sessionState.status = 'AUTHENTICATED';
+        await syncSessionState(sessionState);
+        io.emit(`authenticated-${sessionId}`);
+    });
+
+    // Evento: Falha de autenticação
+    client.on('auth_failure', async (error) => {
+        console.error(`Falha de autenticação na sessão ${sessionId}:`, error.message);
+        sessionState.status = 'AUTH_FAILURE';
+        sessionState.error = error.message;
+        await syncSessionState(sessionState);
+        io.emit(`auth-failure-${sessionId}`, { error: error.message });
+    });
+
+    // Evento: Mensagem recebida
+    client.on('message', async (message) => {
+        if (message.fromMe || message.from.includes('status')) return;
+
+        try {
+            let resposta;
+
+            if (message.hasMedia) {
+                const mediaData = await tools.baixarMidia(message);
+                resposta = mediaData
+                    ? await tools.processarMedia(message.from, mediaData, sessionId)
+                    : 'Não consegui baixar a mídia.';
+            } else {
+                resposta = await tools.processarTexto(message.from, message.body, sessionId);
             }
-        });
 
-        client.on('ready', async () => {
-            sessionManager.updateState({
-                status: 'CONNECTED',
-                ready: true,
-                qr: null
-            });
-            await syncSessionState(sessionManager);
-            io.emit(`ready-${sessionId}`);
-        });
+            if (resposta) {
+                await message.reply(resposta.replace(/\*\*/g, '*'));
+            }
+        } catch (error) {
+            console.error(`Erro ao processar mensagem para o usuário ${message.from}:`, error);
+        }
+    });
 
-        client.on('authenticated', async () => {
-            sessionManager.updateState({
-                status: 'AUTHENTICATED',
-                qr: null
-            });
-            await syncSessionState(sessionManager);
-            io.emit(`authenticated-${sessionId}`);
-        });
-
-        client.on('auth_failure', async (error) => {
-            sessionManager.updateState({
-                status: 'AUTH_FAILURE',
-                error: error.message
-            });
-            await syncSessionState(sessionManager);
-            io.emit(`auth-failure-${sessionId}`, { error: error.message });
-        });
-
-        client.on('disconnected', async (reason) => {
-            await sessionManager.cleanup();
-            await syncSessionState(sessionManager);
-            io.emit(`disconnected-${sessionId}`, { reason });
-        });
-
-        await initializeWithRetry(sessionManager);
-        return sessionManager;
-
-    } catch (error) {
-        logger.error(`Erro fatal ao criar sessão ${sessionId}:`, error);
+    // Evento: Cliente desconectado
+    client.on('disconnected', async (reason) => {
+        console.log(`Sessão ${sessionId} desconectada. Motivo: ${reason}`);
+        sessionState.ready = false;
+        sessionState.qr = null;
+        sessionState.status = 'DISCONNECTED';
+        await syncSessionState(sessionState);
         sessions.delete(sessionId);
-        throw error;
+        io.emit(`disconnected-${sessionId}`, { reason });
+    });
+
+    // Inicialização do cliente
+    try {
+        await client.initialize();
+        sessionState.status = 'INITIALIZED';
+        await syncSessionState(sessionState);
+    } catch (error) {
+        console.error(`Erro ao inicializar a sessão ${sessionId}:`, error);
+        sessionState.status = 'ERROR';
+        sessionState.error = error.message;
+        await syncSessionState(sessionState);
+        sessions.delete(sessionId);
     }
 }
+

@@ -1,4 +1,3 @@
-// createSession.mjs - Atualização Completa
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
 import { PrismaClient } from '@prisma/client';
@@ -18,32 +17,21 @@ const logger = createLogger({
     ]
 });
 
-// Configuração otimizada do Puppeteer para iOS e outros dispositivos
+// Configuração simplificada do Puppeteer sem suporte específico para iOS
 const puppeteerConfig = {
     args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--disable-accelerated-2d-canvas',
         '--disable-web-security',
         '--no-first-run',
         '--no-zygote',
-        '--single-process',
-        '--force-mobile',
-        '--disable-features=IsolateOrigins,site-per-process'
+        '--single-process'
     ],
     headless: true,
-    platform: process.platform,
-    defaultViewport: {
-        width: 375,
-        height: 812,
-        isMobile: true,
-        hasTouch: true,
-        deviceScaleFactor: 3
-    },
-    timeout: 60000,
-    userDataDir: './whatsapp-sessions'
+    defaultViewport: null, // Remove configurações específicas de viewport
+    timeout: 60000
 };
 
 class SessionManager {

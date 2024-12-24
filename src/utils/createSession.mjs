@@ -1,18 +1,24 @@
-// Importações// utils/createSession.mjs
+// createSession.mjs - Atualização Completa
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth } = pkg;
-import personAI from "../core/person.mjs";
-import Tools from './tools.mjs';
 import { PrismaClient } from '@prisma/client';
-import { Server } from 'socket.io';
+import qrcode from 'qrcode';
+import { createLogger, format, transports } from 'winston';
 
-// Inicializações
-const tools = new Tools();
 const prisma = new PrismaClient();
+const logger = createLogger({
+    level: 'info',
+    format: format.combine(
+        format.timestamp(),
+        format.json()
+    ),
+    transports: [
+        new transports.File({ filename: 'error.log', level: 'error' }),
+        new transports.File({ filename: 'combined.log' })
+    ]
+});
 
-/**
- * Configurações do Puppeteer para o cliente WhatsApp
- */
+// Configuração otimizada do Puppeteer para iOS e outros dispositivos
 const puppeteerConfig = {
     args: [
         '--no-sandbox',
@@ -20,208 +26,181 @@ const puppeteerConfig = {
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--disable-accelerated-2d-canvas',
-        '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--disable-default-apps',
-        '--disable-infobars',
-        '--no-default-browser-check',
-        '--no-experiments',
-        '--ignore-certificate-errors',
-        '--ignore-certificate-errors-spki-list',
-        '--ignore-ssl-errors'
+        '--disable-web-security',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--force-mobile',
+        '--disable-features=IsolateOrigins,site-per-process'
     ],
     headless: true,
-    defaultViewport: null,
-    timeout: 60000
+    platform: process.platform,
+    defaultViewport: {
+        width: 375,
+        height: 812,
+        isMobile: true,
+        hasTouch: true,
+        deviceScaleFactor: 3
+    },
+    timeout: 60000,
+    userDataDir: './whatsapp-sessions'
 };
 
-/**
- * Tenta inicializar o cliente com retry em caso de falha
- * @param {Client} client - Cliente WhatsApp
- * @param {number} maxRetries - Número máximo de tentativas
- * @returns {Promise<boolean>}
- */
-async function initializeWithRetry(client, maxRetries = 3) {
+class SessionManager {
+    constructor(sessionId, userId) {
+        this.sessionId = sessionId;
+        this.userId = userId;
+        this.state = {
+            status: 'INITIALIZING',
+            qr: null,
+            ready: false,
+            error: null,
+            retryCount: 0,
+            lastActivity: Date.now()
+        };
+        this.client = null;
+    }
+
+    updateState(newState) {
+        this.state = {
+            ...this.state,
+            ...newState,
+            lastActivity: Date.now()
+        };
+        return this.state;
+    }
+
+    async cleanup() {
+        try {
+            if (this.client) {
+                await this.client.destroy();
+                this.client = null;
+            }
+            this.updateState({
+                status: 'DISCONNECTED',
+                ready: false,
+                qr: null
+            });
+        } catch (error) {
+            logger.error(`Erro ao limpar sessão ${this.sessionId}:`, error);
+        }
+    }
+}
+
+async function initializeWithRetry(sessionManager, maxRetries = 3) {
     for (let i = 0; i < maxRetries; i++) {
         try {
-            await client.initialize();
-            console.log(`Cliente inicializado com sucesso na tentativa ${i + 1}`);
+            await sessionManager.client.initialize();
             return true;
         } catch (error) {
-            console.error(`Tentativa ${i + 1} de ${maxRetries} falhou:`, error);
-            if (i === maxRetries - 1) throw error;
-            console.log(`Aguardando 5 segundos antes da próxima tentativa...`);
+            logger.error(`Tentativa ${i + 1}/${maxRetries} falhou para sessão ${sessionManager.sessionId}:`, error);
+            
+            if (i === maxRetries - 1) {
+                throw error;
+            }
+            
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
     return false;
 }
 
-/**
- * Limpa recursos do cliente
- * @param {Client} client - Cliente WhatsApp
- */
-async function cleanupClient(client) {
+async function syncSessionState(sessionManager) {
     try {
-        await client.destroy();
-        console.log('Cliente destruído com sucesso');
-    } catch (error) {
-        console.error('Erro ao destruir cliente:', error);
-    }
-}
-
-/**
- * Atualiza o status da sessão no banco de dados
- * @param {string} sessionId - ID da sessão
- * @param {string} status - Novo status
- * @param {string} [errorMessage] - Mensagem de erro opcional
- */
-async function updateSessionStatus(sessionId, status, errorMessage = null) {
-    try {
-        await prisma.session.update({
-            where: { sessionId },
-            data: { 
-                status,
-                ...(errorMessage && { errorMessage })
+        await prisma.session.upsert({
+            where: { sessionId: sessionManager.sessionId },
+            update: {
+                status: sessionManager.state.status,
+                lastActivity: new Date(sessionManager.state.lastActivity),
+                errorMessage: sessionManager.state.error,
+                updatedAt: new Date()
+            },
+            create: {
+                sessionId: sessionManager.sessionId,
+                userId: sessionManager.userId,
+                status: sessionManager.state.status,
+                createdAt: new Date(),
+                updatedAt: new Date()
             }
         });
     } catch (error) {
-        console.error(`Erro ao atualizar status da sessão ${sessionId}:`, error);
+        logger.error(`Erro ao sincronizar estado da sessão ${sessionManager.sessionId}:`, error);
     }
 }
 
-/**
- * Processa mensagens recebidas
- * @param {Object} message - Mensagem recebida
- * @param {string} sessionId - ID da sessão
- */
-async function handleIncomingMessage(message, sessionId) {
-    if (message.fromMe) return;
-
-    const chatId = message.from;
-    if (chatId.includes('status')) return;
-
-    try {
-        let resposta;
-
-        if (message.hasMedia) {
-            console.log(`Processando mídia da mensagem de ${chatId}`);
-            const mediaData = await tools.baixarMidia(message);
-            resposta = mediaData
-                ? await tools.processarMedia(chatId, mediaData, sessionId)
-                : "Não foi possível processar a mídia. Por favor, tente novamente.";
-        } else {
-            console.log(`Processando texto da mensagem de ${chatId}: "${message.body.substring(0, 50)}..."`);
-            resposta = await tools.processarTexto(chatId, message.body, sessionId);
-        }
-
-        if (resposta) {
-            await message.reply(resposta.replace(/\*\*/g, '*'));
-            console.log(`Resposta enviada para ${chatId}`);
-        }
-    } catch (error) {
-        console.error(`Erro ao processar mensagem para ${chatId}:`, error);
-        try {
-            await message.reply("Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente em alguns instantes.");
-        } catch (replyError) {
-            console.error(`Erro ao enviar mensagem de erro para ${chatId}:`, replyError);
-        }
-    }
-}
-
-/**
- * Cria e gerencia uma sessão do WhatsApp
- * @param {string} sessionId - ID único da sessão
- * @param {string} userId - ID do usuário associado
- * @param {Object} sessions - Objeto contendo as sessões ativas
- * @param {Server} io - Instância do Socket.IO para comunicação
- */
 export async function createSession(sessionId, userId, sessions, io) {
-    console.log(`Iniciando criação de sessão para ${sessionId}`);
+    logger.info(`Iniciando criação de sessão para ${sessionId}`);
 
-    const client = new Client({
-        authStrategy: new LocalAuth({ clientId: sessionId }),
-        puppeteer: puppeteerConfig
-    });
+    const sessionManager = new SessionManager(sessionId, userId);
+    sessions.set(sessionId, sessionManager);
 
-    // Configuração dos eventos do cliente
-    client.on('qr', async (qr) => {
-        console.log(`QR code gerado para a sessão ${sessionId}`);
-        sessions[sessionId] = { ...sessions[sessionId], qr };
-        io.emit(`qr-${sessionId}`, qr);
-    });
-
-    client.on('ready', async () => {
-        console.log(`Cliente ${sessionId} está pronto!`);
-        sessions[sessionId] = { ...sessions[sessionId], ready: true };
-
-        try {
-            await prisma.session.upsert({
-                where: { sessionId },
-                update: { 
-                    createdAt: new Date(),
-                    status: 'ACTIVE'
-                },
-                create: { 
-                    sessionId, 
-                    userId,
-                    status: 'ACTIVE',
-                    createdAt: new Date()
-                },
-            });
-            io.emit(`ready-${sessionId}`);
-        } catch (error) {
-            console.error(`Erro ao salvar a sessão ${sessionId}:`, error);
-            io.emit(`error-${sessionId}`, {
-                type: 'DATABASE_ERROR',
-                message: 'Erro ao salvar sessão no banco de dados'
-            });
-        }
-    });
-
-    client.on('message', async (message) => {
-        await handleIncomingMessage(message, sessionId);
-    });
-
-    client.on('disconnected', async () => {
-        console.log(`Cliente ${sessionId} desconectado`);
-        await updateSessionStatus(sessionId, 'DISCONNECTED');
-        
-        if (sessions[sessionId]?.client) {
-            await cleanupClient(sessions[sessionId].client);
-        }
-        
-        delete sessions[sessionId];
-        io.emit(`disconnected-${sessionId}`);
-    });
-
-    client.on('auth_failure', async () => {
-        console.error(`Falha de autenticação na sessão ${sessionId}`);
-        await updateSessionStatus(sessionId, 'AUTH_FAILURE');
-        io.emit(`auth-failure-${sessionId}`);
-    });
-
-    // Inicialização do cliente
     try {
-        console.log(`Tentando inicializar cliente para sessão ${sessionId}`);
-        await initializeWithRetry(client);
-        sessions[sessionId] = { client, qr: null, ready: false };
-        console.log(`Cliente ${sessionId} inicializado com sucesso`);
-    } catch (error) {
-        console.error(`Erro fatal ao inicializar cliente para sessão ${sessionId}:`, error);
-        
-        if (sessions[sessionId]?.client) {
-            await cleanupClient(sessions[sessionId].client);
-        }
-        
-        delete sessions[sessionId];
-        await updateSessionStatus(sessionId, 'ERROR', error.message);
-        
-        io.emit(`error-${sessionId}`, {
-            type: 'INITIALIZATION_ERROR',
-            message: error.message
+        const client = new Client({
+            authStrategy: new LocalAuth({ 
+                clientId: sessionId,
+                dataPath: './whatsapp-sessions'
+            }),
+            puppeteer: puppeteerConfig,
+            qrMaxRetries: 5,
+            restartOnAuthFail: true
         });
-        
+
+        sessionManager.client = client;
+
+        client.on('qr', async (qr) => {
+            try {
+                const qrImage = await qrcode.toDataURL(qr);
+                sessionManager.updateState({
+                    status: 'WAITING_QR',
+                    qr: qrImage
+                });
+                await syncSessionState(sessionManager);
+                io.emit(`qr-${sessionId}`, qrImage);
+            } catch (error) {
+                logger.error(`Erro ao processar QR code para ${sessionId}:`, error);
+            }
+        });
+
+        client.on('ready', async () => {
+            sessionManager.updateState({
+                status: 'CONNECTED',
+                ready: true,
+                qr: null
+            });
+            await syncSessionState(sessionManager);
+            io.emit(`ready-${sessionId}`);
+        });
+
+        client.on('authenticated', async () => {
+            sessionManager.updateState({
+                status: 'AUTHENTICATED',
+                qr: null
+            });
+            await syncSessionState(sessionManager);
+            io.emit(`authenticated-${sessionId}`);
+        });
+
+        client.on('auth_failure', async (error) => {
+            sessionManager.updateState({
+                status: 'AUTH_FAILURE',
+                error: error.message
+            });
+            await syncSessionState(sessionManager);
+            io.emit(`auth-failure-${sessionId}`, { error: error.message });
+        });
+
+        client.on('disconnected', async (reason) => {
+            await sessionManager.cleanup();
+            await syncSessionState(sessionManager);
+            io.emit(`disconnected-${sessionId}`, { reason });
+        });
+
+        await initializeWithRetry(sessionManager);
+        return sessionManager;
+
+    } catch (error) {
+        logger.error(`Erro fatal ao criar sessão ${sessionId}:`, error);
+        sessions.delete(sessionId);
         throw error;
     }
 }

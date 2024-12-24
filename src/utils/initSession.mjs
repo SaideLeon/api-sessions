@@ -1,7 +1,7 @@
 // Importações
 import { PrismaClient } from '@prisma/client';
 import { createSession } from './createSession.mjs';
-
+import logger from '../log/logger.mjs';
 // Inicialização do Prisma
 const prisma = new PrismaClient();
 

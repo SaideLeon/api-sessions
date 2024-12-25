@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middlewares/auth.mjs';
 import { createSession } from '../utils/createSession.mjs';
 
+
 const prisma = new PrismaClient();
 const router = express.Router();
 

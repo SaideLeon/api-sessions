@@ -59,7 +59,7 @@ class App {
     this.app = express();
     this.server = null;
     this.io = null;
-    this.sessions = new Map();
+    this.sessions = {};
     this.isDevelopment = process.env.NODE_ENV === 'development';
     this.prisma = prisma;
 

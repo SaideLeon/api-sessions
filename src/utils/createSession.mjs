@@ -19,9 +19,14 @@ const prisma = new PrismaClient();
  * @param {Server} io - Instância do Socket.IO para comunicação
  */
 export async function createSession(sessionId, userId, sessions, io) {
-    const client = new Client({
-        authStrategy: new LocalAuth({ clientId: sessionId }),
-    });
+	const client = new Client({
+    authStrategy: new LocalAuth({ clientId: sessionId }),
+        puppeteer: {
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    },
+});
+
+    
 
     // Evento de QR Code gerado
     client.on('qr', async (qr) => {

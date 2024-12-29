@@ -40,6 +40,7 @@ class Cerebro {
         try {
             tempFilePath = temp.path({ suffix: ".mp3" });
             fs.writeFileSync(tempFilePath, mediaData.data.split(",")[1], { encoding: "base64" });
+            console.log(tempFilePath);
 
             const transcription = await groq.audio.transcriptions.create({
                 file: fs.createReadStream(tempFilePath),

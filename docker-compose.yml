@@ -1,0 +1,32 @@
+version: "3.8"
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/sessions_db?schema=public
+      - JWT_SECRET=your_jwt_secret
+      - JWT_EXPIRES_IN=24h
+      - CORS_ORIGIN=*
+      - GROQ_API_KEY=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
+      - GROQ_MODEL=mixtral-8x7b-32768
+    depends_on:
+      - db
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=sessions_db
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
